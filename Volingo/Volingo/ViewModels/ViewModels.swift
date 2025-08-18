@@ -13,14 +13,69 @@ class DictionaryViewModel: ObservableObject {
     @Published var searchText = ""
     @Published var searchResults: [Word] = []
     @Published var isLoading = false
+    @Published var errorMessage: String?
+    @Published var selectedWord: Word?
     
-    // TODO: 实现词典查询逻辑
+    private let dictionaryService = DictionaryService.shared
+    
+    // 执行单词搜索
     func searchWord(_ query: String) {
-        // 词典查询逻辑
+        guard !query.isEmpty else {
+            searchResults = []
+            return
+        }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        Task {
+            do {
+                let results = try await dictionaryService.searchWord(query)
+                
+                await MainActor.run {
+                    self.searchResults = results
+                    self.isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                    self.searchResults = []
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
+    // 获取单词详细信息
+    func getWordDetails(_ word: String) {
+        Task {
+            do {
+                let wordDetails = try await dictionaryService.getWordDetails(word)
+                
+                await MainActor.run {
+                    self.selectedWord = wordDetails
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+    
+    // 添加到生词本
     func addToWordbook(_ word: Word) {
-        // 添加到生词本逻辑
+        do {
+            try WordbookService.shared.saveWord(word)
+            // 可以添加成功提示
+        } catch {
+            errorMessage = "添加到生词本失败: \(error.localizedDescription)"
+        }
+    }
+    
+    // 清除错误信息
+    func clearError() {
+        errorMessage = nil
     }
 }
 

@@ -12,6 +12,11 @@ struct VolingoApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onAppear {
+                    Task {
+                        await try? DictionaryService.shared.searchWord("english")
+                    }
+                }
         }
     }
 }
