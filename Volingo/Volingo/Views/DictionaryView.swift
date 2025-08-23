@@ -300,6 +300,7 @@ struct WordDetailView: View {
 // MARK: - 单词头部视图
 struct WordHeaderView: View {
     let word: Word
+    @StateObject private var audioService = AudioService.shared
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -311,12 +312,20 @@ struct WordHeaderView: View {
                 Spacer()
                 
                 Button(action: {
-                    // TODO: 播放发音
+                    audioService.playWordPronunciation(word.word)
                 }) {
-                    Image(systemName: "speaker.wave.2")
-                        .font(.title2)
-                        .foregroundColor(.blue)
+                    HStack(spacing: 4) {
+                        Image(systemName: audioService.isPlaying ? "speaker.wave.3" : "speaker.wave.2")
+                            .font(.title2)
+                            .foregroundColor(.blue)
+                        
+                        if audioService.isPlaying {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                        }
+                    }
                 }
+                .disabled(audioService.isPlaying)
             }
             
             if let phonetic = word.phonetic {

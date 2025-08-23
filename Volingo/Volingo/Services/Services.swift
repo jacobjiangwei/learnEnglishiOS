@@ -6,15 +6,6 @@
 //
 
 import Foundation
-
-//
-//  Services.swift
-//  Volingo
-//
-//  Created by jacob on 2025/8/10.
-//
-
-import Foundation
 import SQLite3
 
 let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
@@ -316,26 +307,6 @@ class NetworkService {
 struct AudioAnalysisResult {
     let score: Double
     let feedback: String
-}
-
-// MARK: - 音频服务
-class AudioService {
-    static let shared = AudioService()
-    private init() {}
-    
-    // TODO: 实现音频播放和录音功能
-    func playAudio(url: String) {
-        // 播放音频文件
-    }
-    
-    func startRecording() {
-        // 开始录音
-    }
-    
-    func stopRecording() -> Data? {
-        // 停止录音并返回音频数据
-        return nil
-    }
 }
 
 // MARK: - 存储服务
