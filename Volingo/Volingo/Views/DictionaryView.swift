@@ -10,6 +10,7 @@ import SwiftUI
 struct DictionaryView: View {
     @StateObject private var viewModel = DictionaryViewModel()
     @State private var showingWordDetail = false
+    @State private var searchTask: Task<Void, Never>?
     
     var body: some View {
         NavigationView {
@@ -22,6 +23,27 @@ struct DictionaryView: View {
                     }
                 )
                 .padding()
+                .onChange(of: viewModel.searchText) { oldValue, newValue in
+                    // 取消之前的搜索任务
+                    searchTask?.cancel()
+                    
+                    // 如果输入为空，清空结果
+                    if newValue.isEmpty {
+                        viewModel.searchResults = []
+                        return
+                    }
+                    
+                    // 添加防抖机制，300毫秒后执行搜索
+                    searchTask = Task {
+                        try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+                        
+                        if !Task.isCancelled {
+                            await MainActor.run {
+                                viewModel.searchWord(newValue)
+                            }
+                        }
+                    }
+                }
                 
                 // 错误提示
                 if let errorMessage = viewModel.errorMessage {
@@ -58,6 +80,10 @@ struct DictionaryView: View {
             if let word = viewModel.selectedWord {
                 WordDetailView(word: word)
             }
+        }
+        .onDisappear {
+            // 视图消失时取消搜索任务
+            searchTask?.cancel()
         }
     }
 }
@@ -199,7 +225,7 @@ struct WordRowView: View {
                 }
                 
                 // 词汇级别标签
-                if !word.levels.activeLevels.isEmpty {
+                if (!word.levels.activeLevels.isEmpty) {
                     HStack {
                         ForEach(Array(word.levels.activeLevels.prefix(3)), id: \.self) { level in
                             Text(level)
@@ -300,7 +326,7 @@ struct WordHeaderView: View {
             }
             
             // 词汇级别
-            if !word.levels.activeLevels.isEmpty {
+            if (!word.levels.activeLevels.isEmpty) {
                 LazyHGrid(rows: [GridItem(.flexible())], spacing: 8) {
                     ForEach(word.levels.activeLevels, id: \.self) { level in
                         Text(level)
