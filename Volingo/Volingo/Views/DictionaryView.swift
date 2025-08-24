@@ -248,8 +248,6 @@ struct WordRowView: View {
                     }
                 }
             }
-            .contentShape(Rectangle())
-            .onTapGesture(perform: onTap)
             
             Spacer()
             
@@ -262,6 +260,8 @@ struct WordRowView: View {
             .padding(.leading, 8)
         }
         .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
     }
 }
 
