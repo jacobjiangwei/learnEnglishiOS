@@ -7,30 +7,6 @@
 
 import Foundation
 
-// MARK: - 生词本服务
-class WordbookService {
-    static let shared = WordbookService()
-    private init() {}
-    
-    // TODO: 实现本地 JSON 文件存储
-    func saveWord(_ word: Word) throws {
-        // 保存单词到本地 JSON 文件
-    }
-    
-    func loadSavedWords() throws -> [SavedWord] {
-        // 从本地 JSON 文件加载生词
-        return []
-    }
-    
-    func updateWord(_ savedWord: SavedWord) throws {
-        // 更新生词信息
-    }
-    
-    func deleteWord(_ wordId: String) throws {
-        // 删除生词
-    }
-}
-
 // MARK: - 网络服务
 class NetworkService {
     static let shared = NetworkService()
@@ -64,25 +40,44 @@ class StorageService {
     
     private let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
     
-    // TODO: 实现本地文件存储逻辑
     func saveToFile<T: Codable>(_ object: T, filename: String) throws {
-        // 保存对象到文件
+        let url = documentsDirectory.appendingPathComponent(filename)
+        let data = try JSONEncoder().encode(object)
+        try data.write(to: url)
     }
     
     func loadFromFile<T: Codable>(_ type: T.Type, filename: String) throws -> T {
-        // 从文件加载对象
-        throw StorageError.fileNotFound
+        let url = documentsDirectory.appendingPathComponent(filename)
+        let data = try Data(contentsOf: url)
+        return try JSONDecoder().decode(type, from: data)
     }
     
     func deleteFile(_ filename: String) throws {
-        // 删除文件
+        let url = documentsDirectory.appendingPathComponent(filename)
+        try FileManager.default.removeItem(at: url)
+    }
+    
+    func fileExists(_ filename: String) -> Bool {
+        let url = documentsDirectory.appendingPathComponent(filename)
+        return FileManager.default.fileExists(atPath: url.path)
     }
 }
 
-enum StorageError: Error {
+enum StorageError: Error, LocalizedError {
     case fileNotFound
     case encodingFailed
     case decodingFailed
+    
+    var errorDescription: String? {
+        switch self {
+        case .fileNotFound:
+            return "文件未找到"
+        case .encodingFailed:
+            return "数据编码失败"
+        case .decodingFailed:
+            return "数据解码失败"
+        }
+    }
 }
 
 // MARK: - 服务管理器

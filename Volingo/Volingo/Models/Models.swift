@@ -193,19 +193,142 @@ struct Definition {
 }
 
 // MARK: - 生词本相关模型
-struct SavedWord {
+struct SavedWord: Codable, Identifiable {
     let id: String
-    let word: Word
-    let savedDate: Date
-    let reviewCount: Int
-    let masteryLevel: MasteryLevel
+    let word: Word                      // 使用原有的Word结构
+    
+    // 学习进度数据
+    var masteryLevel: MasteryLevel
+    var correctCount: Int = 0
+    var wrongCount: Int = 0
+    var totalReviews: Int = 0
+    
+    // 时间追踪
+    let addedDate: Date
+    var lastReviewDate: Date?
+    var nextReviewDate: Date
+    var reviewInterval: TimeInterval = 3600 // 1小时
+    
+    var accuracyRate: Double {
+        guard totalReviews > 0 else { return 0 }
+        return Double(correctCount) / Double(totalReviews)
+    }
+    
+    var needsReview: Bool {
+        return Date() >= nextReviewDate
+    }
+    
+    // 从Word创建SavedWord的便利初始化器
+    init(from word: Word) {
+        self.id = UUID().uuidString
+        self.word = word
+        self.masteryLevel = .new
+        self.addedDate = Date()
+        self.nextReviewDate = Date()
+    }
+    
+    // 完整初始化器（用于从存储恢复）
+    init(id: String, word: Word, masteryLevel: MasteryLevel = .new,
+         correctCount: Int = 0, wrongCount: Int = 0, totalReviews: Int = 0,
+         addedDate: Date = Date(), lastReviewDate: Date? = nil, 
+         nextReviewDate: Date = Date(), reviewInterval: TimeInterval = 3600) {
+        self.id = id
+        self.word = word
+        self.masteryLevel = masteryLevel
+        self.correctCount = correctCount
+        self.wrongCount = wrongCount
+        self.totalReviews = totalReviews
+        self.addedDate = addedDate
+        self.lastReviewDate = lastReviewDate
+        self.nextReviewDate = nextReviewDate
+        self.reviewInterval = reviewInterval
+    }
+    
+    // 便利访问器
+    var wordText: String { word.word }
+    var definition: String { word.senses.first?.definitions.first ?? "" }
+    var pronunciation: String? { word.phonetic }
+    var exampleSentence: String? { word.senses.first?.examples.first?.en }
 }
 
-enum MasteryLevel: String, CaseIterable {
-    case new = "新词"
-    case learning = "学习中"
-    case reviewing = "复习中"
-    case mastered = "已掌握"
+enum MasteryLevel: String, CaseIterable, Codable {
+    case new = "新词"           // 刚添加，从未学习
+    case learning = "学习中"     // 开始学习，答对率 < 60%
+    case reviewing = "复习中"    // 基本掌握，答对率 60-85%
+    case mastered = "已掌握"     // 熟练掌握，答对率 > 85%
+    
+    var color: String {
+        switch self {
+        case .new: return "red"
+        case .learning: return "orange"
+        case .reviewing: return "blue"
+        case .mastered: return "green"
+        }
+    }
+}
+
+// 学习会话
+struct LearningSession {
+    let id: String
+    let words: [SavedWord]
+    let startTime: Date
+    var currentIndex: Int
+    var results: [String: LearningResult] = [:]
+    
+    var isCompleted: Bool {
+        return currentIndex >= words.count
+    }
+    
+    var currentWord: SavedWord? {
+        guard currentIndex < words.count else { return nil }
+        return words[currentIndex]
+    }
+}
+
+// 学习结果
+struct LearningResult {
+    let type: LearningResultType
+    let responseTime: TimeInterval
+    let timestamp: Date
+}
+
+enum LearningResultType {
+    case correct    // 答对
+    case incorrect  // 答错
+    case skipped    // 跳过
+}
+
+// 用户学习模式分析
+struct LearningPattern {
+    let averageDelay: TimeInterval      // 平均延迟时间
+    let onTimeReviewRate: Double        // 按时复习率
+    let totalWords: Int                 // 总词数
+    let activeWords: Int                // 活跃学习词数
+}
+
+// 学习会话推荐
+struct StudySessionRecommendation {
+    let recommendedWords: [SavedWord]   // 推荐学习的词
+    let estimatedMinutes: Int           // 预估学习时间
+    let urgentWords: Int                // 紧急需要复习的词数
+}
+
+// 生词本统计
+struct WordbookStats {
+    let totalWords: Int
+    let needReviewCount: Int
+    let newWords: Int
+    let learningWords: Int
+    let reviewingWords: Int
+    let masteredWords: Int
+}
+
+// 单词分类辅助结构
+struct WordCategories {
+    let newWords: [SavedWord]
+    let overdueWords: [SavedWord]
+    let todayWords: [SavedWord]
+    let learningWords: [SavedWord]
 }
 
 // MARK: - 情景对话相关模型

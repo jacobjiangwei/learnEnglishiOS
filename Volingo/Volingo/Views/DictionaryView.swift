@@ -66,8 +66,15 @@ struct DictionaryView: View {
                             viewModel.selectedWord = word
                             showingWordDetail = true
                         },
-                        onAddToWordbook: { word in
-                            viewModel.addToWordbook(word)
+                        onWordbookAction: { word in
+                            if viewModel.isWordInWordbook(word) {
+                                viewModel.removeFromWordbook(word)
+                            } else {
+                                viewModel.addToWordbook(word)
+                            }
+                        },
+                        isWordInWordbook: { word in
+                            viewModel.isWordInWordbook(word)
                         }
                     )
                 }
@@ -171,14 +178,16 @@ struct EmptyResultsView: View {
 struct WordResultsList: View {
     let words: [Word]
     let onWordSelected: (Word) -> Void
-    let onAddToWordbook: (Word) -> Void
+    let onWordbookAction: (Word) -> Void
+    let isWordInWordbook: (Word) -> Bool
     
     var body: some View {
         List(words) { word in
             WordRowView(
                 word: word,
                 onTap: { onWordSelected(word) },
-                onAddToWordbook: { onAddToWordbook(word) }
+                onWordbookAction: { onWordbookAction(word) },
+                isWordInWordbook: { isWordInWordbook(word) }
             )
         }
         .listStyle(.plain)
@@ -189,7 +198,8 @@ struct WordResultsList: View {
 struct WordRowView: View {
     let word: Word
     let onTap: () -> Void
-    let onAddToWordbook: () -> Void
+    let onWordbookAction: () -> Void
+    let isWordInWordbook: () -> Bool
     
     var body: some View {
         HStack {
@@ -238,16 +248,20 @@ struct WordRowView: View {
                     }
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onTap)
             
             Spacer()
             
-            Button(action: onAddToWordbook) {
-                Image(systemName: "plus.circle")
+            Button(action: onWordbookAction) {
+                Image(systemName: isWordInWordbook() ? "minus.circle" : "plus.circle")
                     .foregroundColor(.blue)
+                    .font(.title2)
             }
+            .buttonStyle(.plain)
+            .padding(.leading, 8)
         }
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
+        .padding(.vertical, 4)
     }
 }
 

@@ -15,8 +15,13 @@ class DictionaryViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var selectedWord: Word?
+    @Published var savedWordIds: Set<String> = [] // 新增：保存已收藏单词的ID集合
     
     private let dictionaryService = DictionaryService.shared
+    
+    init() {
+        loadSavedWordIds()
+    }
     
     // 执行单词搜索
     func searchWord(_ query: String) {
@@ -66,10 +71,39 @@ class DictionaryViewModel: ObservableObject {
     // 添加到生词本
     func addToWordbook(_ word: Word) {
         do {
-            try WordbookService.shared.saveWord(word)
+            try WordbookService.shared.addWordFromDictionary(word)
+            savedWordIds.insert(word.word.lowercased())
             // 可以添加成功提示
         } catch {
             errorMessage = "添加到生词本失败: \(error.localizedDescription)"
+        }
+    }
+    
+    // 从生词本移除
+    func removeFromWordbook(_ word: Word) {
+        do {
+            let savedWords = try WordbookService.shared.loadSavedWords()
+            if let savedWord = savedWords.first(where: { $0.word.word.lowercased() == word.word.lowercased() }) {
+                try WordbookService.shared.deleteWord(savedWord.id)
+                savedWordIds.remove(word.word.lowercased())
+            }
+        } catch {
+            errorMessage = "从生词本移除失败: \(error.localizedDescription)"
+        }
+    }
+    
+    // 检查单词是否已在生词本中
+    func isWordInWordbook(_ word: Word) -> Bool {
+        return savedWordIds.contains(word.word.lowercased())
+    }
+    
+    // 加载已保存的单词ID
+    private func loadSavedWordIds() {
+        do {
+            let savedWords = try WordbookService.shared.loadSavedWords()
+            savedWordIds = Set(savedWords.map { $0.word.word.lowercased() })
+        } catch {
+            print("加载生词本失败: \(error)")
         }
     }
     
