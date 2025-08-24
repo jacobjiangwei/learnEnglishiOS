@@ -269,13 +269,55 @@ struct WordRowView: View {
 struct WordDetailView: View {
     let word: Word
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var audioService = AudioService.shared
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    // 头部信息
-                    WordHeaderView(word: word)
+                    // 移除重复的头部信息，直接从音标和级别开始
+                    VStack(alignment: .leading, spacing: 8) {
+                        // 音标和发音按钮
+                        HStack {
+                            if let phonetic = word.phonetic {
+                                Text(phonetic)
+                                    .font(.title3)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            Button(action: {
+                                audioService.playWordPronunciation(word.word)
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: audioService.isPlaying ? "speaker.wave.3" : "speaker.wave.2")
+                                        .font(.title2)
+                                        .foregroundColor(.blue)
+                                    
+                                    if audioService.isPlaying {
+                                        ProgressView()
+                                            .scaleEffect(0.6)
+                                    }
+                                }
+                            }
+                            .disabled(audioService.isPlaying)
+                        }
+                        
+                        // 词汇级别
+                        if !word.levels.activeLevels.isEmpty {
+                            LazyHGrid(rows: [GridItem(.flexible())], spacing: 8) {
+                                ForEach(word.levels.activeLevels, id: \.self) { level in
+                                    Text(level)
+                                        .font(.caption)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.green.opacity(0.2))
+                                        .cornerRadius(6)
+                                }
+                            }
+                        }
+                    }
                     
                     // 词义列表
                     WordSensesView(senses: word.senses)

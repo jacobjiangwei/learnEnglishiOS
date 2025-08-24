@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI
 
 // MARK: - 词典相关模型
 struct Word: Codable, Identifiable {
@@ -244,6 +245,50 @@ struct SavedWord: Codable, Identifiable {
         self.reviewInterval = reviewInterval
     }
     
+    // 自定义编码 - 确保 word.levels 被正确保存
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(masteryLevel, forKey: .masteryLevel)
+        try container.encode(correctCount, forKey: .correctCount)
+        try container.encode(wrongCount, forKey: .wrongCount)
+        try container.encode(totalReviews, forKey: .totalReviews)
+        try container.encode(addedDate, forKey: .addedDate)
+        try container.encode(lastReviewDate, forKey: .lastReviewDate)
+        try container.encode(nextReviewDate, forKey: .nextReviewDate)
+        try container.encode(reviewInterval, forKey: .reviewInterval)
+        
+        // 手动编码 word 和 levels
+        try container.encode(word, forKey: .word)
+        try container.encode(word.levels, forKey: .wordLevels)
+    }
+    
+    // 自定义解码 - 确保 word.levels 被正确恢复
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        masteryLevel = try container.decode(MasteryLevel.self, forKey: .masteryLevel)
+        correctCount = try container.decode(Int.self, forKey: .correctCount)
+        wrongCount = try container.decode(Int.self, forKey: .wrongCount)
+        totalReviews = try container.decode(Int.self, forKey: .totalReviews)
+        addedDate = try container.decode(Date.self, forKey: .addedDate)
+        lastReviewDate = try container.decodeIfPresent(Date.self, forKey: .lastReviewDate)
+        nextReviewDate = try container.decode(Date.self, forKey: .nextReviewDate)
+        reviewInterval = try container.decode(TimeInterval.self, forKey: .reviewInterval)
+        
+        // 手动解码 word 和 levels
+        var decodedWord = try container.decode(Word.self, forKey: .word)
+        let levels = try container.decode(WordLevels.self, forKey: .wordLevels)
+        decodedWord.levels = levels  // 恢复 levels 信息
+        word = decodedWord
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case id, masteryLevel, correctCount, wrongCount, totalReviews
+        case addedDate, lastReviewDate, nextReviewDate, reviewInterval
+        case word, wordLevels
+    }
+    
     // 便利访问器
     var wordText: String { word.word }
     var definition: String { word.senses.first?.definitions.first ?? "" }
@@ -257,12 +302,12 @@ enum MasteryLevel: String, CaseIterable, Codable {
     case reviewing = "复习中"    // 基本掌握，答对率 60-85%
     case mastered = "已掌握"     // 熟练掌握，答对率 > 85%
     
-    var color: String {
+    var color: Color {
         switch self {
-        case .new: return "red"
-        case .learning: return "orange"
-        case .reviewing: return "blue"
-        case .mastered: return "green"
+        case .new: return .red
+        case .learning: return .orange
+        case .reviewing: return .blue
+        case .mastered: return .green
         }
     }
 }
