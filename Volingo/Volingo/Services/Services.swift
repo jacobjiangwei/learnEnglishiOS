@@ -21,7 +21,7 @@ class DictionaryService {
     }
     
     deinit {
-        closeDatabase()
+        closeDatabaseSync()
     }
     
     // MARK: - 数据库连接管理
@@ -39,11 +39,16 @@ class DictionaryService {
         }
     }
     
-    private func closeDatabase() {
+    private func closeDatabaseSync() {
         if sqlite3_close(database) != SQLITE_OK {
             print("❌ 无法关闭数据库: \(String(cString: sqlite3_errmsg(database)))")
         }
         database = nil
+    }
+    
+    @MainActor
+    private func closeDatabase() {
+        closeDatabaseSync()
     }
     
     private func getDatabasePath() -> String? {
@@ -64,9 +69,9 @@ class DictionaryService {
     // MARK: - 单词查询功能
     func searchWord(_ query: String) async throws -> [Word] {
         return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
+            Task {
                 do {
-                    let words = try self.performWordSearch(query)
+                    let words = try await self.performWordSearch(query)
                     continuation.resume(returning: words)
                 } catch {
                     continuation.resume(throwing: error)
@@ -75,67 +80,75 @@ class DictionaryService {
         }
     }
     
-    private func performWordSearch(_ query: String) throws -> [Word] {
-        guard let database = self.database else {
-            throw WordSearchError.databaseNotFound
-        }
-        
-        let searchQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !searchQuery.isEmpty else {
-            throw WordSearchError.invalidQuery
-        }
-        
-        // SQL查询语句 - 支持精确匹配和前缀匹配
-        let sql = """
-            SELECT word, json_data, A1, A2, B1, B2, C1, Middle_School, High_School, 
-                   CET4, CET6, Graduate_Exam, TOEFL, SAT
-            FROM dictionary 
-            WHERE word = ? OR word LIKE ? 
-            ORDER BY 
-                CASE WHEN word = ? THEN 0 ELSE 1 END,
-                LENGTH(word),
-                word
-            LIMIT 50;
-            """
-        
-        var statement: OpaquePointer?
-        var words: [Word] = []
-        
-        defer {
-            sqlite3_finalize(statement)
-        }
-        
-        if sqlite3_prepare_v2(database, sql, -1, &statement, nil) != SQLITE_OK {
-            let errorMessage = String(cString: sqlite3_errmsg(database))
-            throw WordSearchError.databaseError(errorMessage)
-        }
-        
-        // 绑定查询参数
-        let likePattern = "\(searchQuery)%"
-
-        searchQuery.withCString { cString in
-            sqlite3_bind_text(statement, 1, cString, -1, SQLITE_TRANSIENT)
-        }
-        likePattern.withCString { cString in
-            sqlite3_bind_text(statement, 2, cString, -1, SQLITE_TRANSIENT)
-        }
-        searchQuery.withCString { cString in
-            sqlite3_bind_text(statement, 3, cString, -1, SQLITE_TRANSIENT)
-        }
-        
-        while sqlite3_step(statement) == SQLITE_ROW {
-            if let record = parseWordRecord(from: statement) {
-                do {
-                    let word = try parseWordFromJSON(record: record)
-                    words.append(word)
-                } catch {
-                    print("⚠️ 解析单词数据失败: \(record.word), 错误: \(error)")
-                    continue
-                }
+    private func performWordSearch(_ query: String) async throws -> [Word] {
+        return try await Task.detached { [weak self] in
+            guard let self = self else {
+                throw WordSearchError.databaseNotFound
             }
-        }
-        
-        return words
+            
+            return try await MainActor.run {
+                guard let database = self.database else {
+                    throw WordSearchError.databaseNotFound
+                }
+                
+                let searchQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard !searchQuery.isEmpty else {
+                    throw WordSearchError.invalidQuery
+                }
+                
+                // SQL查询语句 - 支持精确匹配和前缀匹配
+                let sql = """
+                    SELECT word, json_data, A1, A2, B1, B2, C1, Middle_School, High_School, 
+                           CET4, CET6, Graduate_Exam, TOEFL, SAT
+                    FROM dictionary 
+                    WHERE word = ? OR word LIKE ? 
+                    ORDER BY 
+                        CASE WHEN word = ? THEN 0 ELSE 1 END,
+                        LENGTH(word),
+                        word
+                    LIMIT 50;
+                    """
+                
+                var statement: OpaquePointer?
+                var words: [Word] = []
+                
+                defer {
+                    sqlite3_finalize(statement)
+                }
+                
+                if sqlite3_prepare_v2(database, sql, -1, &statement, nil) != SQLITE_OK {
+                    let errorMessage = String(cString: sqlite3_errmsg(database))
+                    throw WordSearchError.databaseError(errorMessage)
+                }
+                
+                // 绑定查询参数
+                let likePattern = "\(searchQuery)%"
+
+                _ = searchQuery.withCString { cString in
+                    sqlite3_bind_text(statement, 1, cString, -1, SQLITE_TRANSIENT)
+                }
+                _ = likePattern.withCString { cString in
+                    sqlite3_bind_text(statement, 2, cString, -1, SQLITE_TRANSIENT)
+                }
+                _ = searchQuery.withCString { cString in
+                    sqlite3_bind_text(statement, 3, cString, -1, SQLITE_TRANSIENT)
+                }
+                
+                while sqlite3_step(statement) == SQLITE_ROW {
+                    if let record = self.parseWordRecord(from: statement) {
+                        do {
+                            let word = try self.parseWordFromJSON(record: record)
+                            words.append(word)
+                        } catch {
+                            print("⚠️ 解析单词数据失败: \(record.word), 错误: \(error)")
+                            continue
+                        }
+                    }
+                }
+                
+                return words
+            }
+        }.value
     }
     
     func getWordDetails(_ wordQuery: String) async throws -> Word? {
@@ -181,7 +194,7 @@ class DictionaryService {
         
         do {
             let decoder = JSONDecoder()
-            var word = try decoder.decode(Word.self, from: jsonData)
+            let word = try decoder.decode(Word.self, from: jsonData)
             
             // 添加词汇级别信息
             let wordWithLevels = Word(
@@ -205,9 +218,9 @@ class DictionaryService {
     // MARK: - 辅助功能
     func searchWordsByLevel(_ level: String, limit: Int = 100) async throws -> [Word] {
         return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
+            Task {
                 do {
-                    let words = try self.performLevelSearch(level, limit: limit)
+                    let words = try await self.performLevelSearch(level, limit: limit)
                     continuation.resume(returning: words)
                 } catch {
                     continuation.resume(throwing: error)
@@ -216,46 +229,54 @@ class DictionaryService {
         }
     }
     
-    private func performLevelSearch(_ level: String, limit: Int) throws -> [Word] {
-        guard let database = self.database else {
-            throw WordSearchError.databaseNotFound
-        }
-        
-        let sql = """
-            SELECT word, json_data, A1, A2, B1, B2, C1, Middle_School, High_School, 
-                   CET4, CET6, Graduate_Exam, TOEFL, SAT
-            FROM dictionary 
-            WHERE \(level) = 1
-            ORDER BY word
-            LIMIT ?;
-            """
-        
-        var statement: OpaquePointer?
-        var words: [Word] = []
-        
-        defer {
-            sqlite3_finalize(statement)
-        }
-        
-        if sqlite3_prepare_v2(database, sql, -1, &statement, nil) != SQLITE_OK {
-            let errorMessage = String(cString: sqlite3_errmsg(database))
-            throw WordSearchError.databaseError(errorMessage)
-        }
-        
-        sqlite3_bind_int(statement, 1, Int32(limit))
-        
-        while sqlite3_step(statement) == SQLITE_ROW {
-            if let record = parseWordRecord(from: statement) {
-                do {
-                    let word = try parseWordFromJSON(record: record)
-                    words.append(word)
-                } catch {
-                    continue
-                }
+    private func performLevelSearch(_ level: String, limit: Int) async throws -> [Word] {
+        return try await Task.detached { [weak self] in
+            guard let self = self else {
+                throw WordSearchError.databaseNotFound
             }
-        }
-        
-        return words
+            
+            return try await MainActor.run {
+                guard let database = self.database else {
+                    throw WordSearchError.databaseNotFound
+                }
+                
+                let sql = """
+                    SELECT word, json_data, A1, A2, B1, B2, C1, Middle_School, High_School, 
+                           CET4, CET6, Graduate_Exam, TOEFL, SAT
+                    FROM dictionary 
+                    WHERE \(level) = 1
+                    ORDER BY word
+                    LIMIT ?;
+                    """
+                
+                var statement: OpaquePointer?
+                var words: [Word] = []
+                
+                defer {
+                    sqlite3_finalize(statement)
+                }
+                
+                if sqlite3_prepare_v2(database, sql, -1, &statement, nil) != SQLITE_OK {
+                    let errorMessage = String(cString: sqlite3_errmsg(database))
+                    throw WordSearchError.databaseError(errorMessage)
+                }
+                
+                sqlite3_bind_int(statement, 1, Int32(limit))
+                
+                while sqlite3_step(statement) == SQLITE_ROW {
+                    if let record = self.parseWordRecord(from: statement) {
+                        do {
+                            let word = try self.parseWordFromJSON(record: record)
+                            words.append(word)
+                        } catch {
+                            continue
+                        }
+                    }
+                }
+                
+                return words
+            }
+        }.value
     }
 }
 
