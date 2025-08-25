@@ -23,13 +23,13 @@ struct WordbookView: View {
                 // 筛选和搜索栏
                 WordbookFilterView(
                     searchText: $viewModel.searchText,
-                    selectedLevel: $viewModel.selectedMasteryLevel
+                    selectedLevel: $viewModel.selectedMasteryDescription
                 )
                 .padding(.horizontal)
                 .onChange(of: viewModel.searchText) { _, _ in
                     viewModel.applyFilters()
                 }
-                .onChange(of: viewModel.selectedMasteryLevel) { _, _ in
+                .onChange(of: viewModel.selectedMasteryDescription) { _, _ in
                     viewModel.applyFilters()
                 }
                 
@@ -169,7 +169,10 @@ struct StatsCard: View {
 // MARK: - 筛选视图
 struct WordbookFilterView: View {
     @Binding var searchText: String
-    @Binding var selectedLevel: MasteryLevel?
+    @Binding var selectedLevel: String?
+    
+    // 可选择的掌握程度选项
+    private let masteryOptions = ["新词", "初学", "学习中", "熟悉", "掌握", "精通"]
     
     var body: some View {
         VStack(spacing: 12) {
@@ -202,11 +205,11 @@ struct WordbookFilterView: View {
                         action: { selectedLevel = nil }
                     )
                     
-                    ForEach(MasteryLevel.allCases, id: \.self) { level in
+                    ForEach(masteryOptions, id: \.self) { option in
                         FilterChip(
-                            title: level.rawValue,
-                            isSelected: selectedLevel == level,
-                            action: { selectedLevel = level }
+                            title: option,
+                            isSelected: selectedLevel == option,
+                            action: { selectedLevel = option }
                         )
                     }
                 }
@@ -305,12 +308,12 @@ struct SavedWordRowView: View {
                     Spacer()
                     
                     // 掌握程度标签（右侧）
-                    Text(savedWord.masteryLevel.rawValue)
+                    Text(savedWord.masteryDescription)
                         .font(.caption2)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(savedWord.masteryLevel.color.opacity(0.2))
-                        .foregroundColor(savedWord.masteryLevel.color)
+                        .background(savedWord.masteryColor.opacity(0.2))
+                        .foregroundColor(savedWord.masteryColor)
                         .cornerRadius(4)
                 }
                 
@@ -325,7 +328,7 @@ struct SavedWordRowView: View {
                             .font(.caption2)
                             .foregroundColor(.secondary)
                         
-                        Text("答对率 \(Int(savedWord.accuracyRate * 100))%")
+                        Text("答对率 \(Int((Double(savedWord.correctCount) / Double(max(savedWord.totalReviews, 1))) * 100))%")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                         
@@ -427,10 +430,10 @@ struct LearningProgressView: View {
                 HStack {
                     Text("掌握程度:")
                     Spacer()
-                    Text(savedWord.masteryLevel.rawValue)
+                    Text(savedWord.masteryDescription)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(savedWord.masteryLevel.color.opacity(0.2))
+                        .background(savedWord.masteryColor.opacity(0.2))
                         .cornerRadius(6)
                 }
                 
@@ -444,7 +447,8 @@ struct LearningProgressView: View {
                     HStack {
                         Text("答对率:")
                         Spacer()
-                        Text("\(Int(savedWord.accuracyRate * 100))%")
+                        let accuracy = Double(savedWord.correctCount) / Double(max(savedWord.totalReviews, 1))
+                        Text("\(Int(accuracy * 100))%")
                     }
                 }
                 
@@ -455,13 +459,11 @@ struct LearningProgressView: View {
                         .foregroundColor(.secondary)
                 }
                 
-                if let lastReview = savedWord.lastReviewDate {
-                    HStack {
-                        Text("上次复习:")
-                        Spacer()
-                        Text(lastReview, style: .relative)
-                            .foregroundColor(.secondary)
-                    }
+                HStack {
+                    Text("下次复习:")
+                    Spacer()
+                    Text(savedWord.timeUntilNextReview)
+                        .foregroundColor(.secondary)
                 }
             }
             .font(.subheadline)

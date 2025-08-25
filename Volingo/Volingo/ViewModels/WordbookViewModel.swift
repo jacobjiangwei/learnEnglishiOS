@@ -5,7 +5,7 @@ import SwiftUI
 class WordbookViewModel: ObservableObject {
     @Published var savedWords: [SavedWord] = []
     @Published var filteredWords: [SavedWord] = []
-    @Published var selectedMasteryLevel: MasteryLevel? = nil
+    @Published var selectedMasteryDescription: String? = nil
     @Published var searchText = ""
     @Published var showingWordDetail = false
     @Published var selectedWord: SavedWord?
@@ -49,8 +49,8 @@ class WordbookViewModel: ObservableObject {
         var words = savedWords
         
         // 按掌握程度筛选
-        if let level = selectedMasteryLevel {
-            words = words.filter { $0.masteryLevel == level }
+        if let description = selectedMasteryDescription {
+            words = words.filter { $0.masteryDescription == description }
         }
         
         // 按搜索文本筛选
@@ -109,8 +109,8 @@ class WordbookViewModel: ObservableObject {
     }
     
     /// 获取按掌握程度分组的单词
-    func getWordsByMasteryLevel() -> [MasteryLevel: [SavedWord]] {
-        return Dictionary(grouping: savedWords) { $0.masteryLevel }
+    func getWordsByMasteryDescription() -> [String: [SavedWord]] {
+        return Dictionary(grouping: savedWords) { $0.masteryDescription }
     }
     
     /// 刷新数据（用于从其他页面返回时更新）

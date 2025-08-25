@@ -73,17 +73,27 @@ class WordbookService {
         }
     }
     
-    /// 根据掌握程度获取单词
-    func getWordsByMasteryLevel(_ level: MasteryLevel) throws -> [SavedWord] {
+    /// 根据掌握程度描述获取单词
+    func getWordsByMasteryDescription(_ description: String) throws -> [SavedWord] {
         let words = try loadSavedWords()
-        return words.filter { $0.masteryLevel == level }
+        return words.filter { $0.masteryDescription == description }
     }
     
     /// 获取需要复习的单词
     func getWordsNeedingReview() throws -> [SavedWord] {
         let words = try loadSavedWords()
-        let now = Date()
-        return words.filter { now >= $0.nextReviewDate }
+        return words.filter { $0.needsReview }
+    }
+    
+    /// 获取需要练习的单词（按紧急程度排序）
+    func getWordsNeedingPractice() -> [SavedWord] {
+        do {
+            let words = try loadSavedWords()
+            return words.filter { $0.needsReview }
+                       .sorted { $0.reviewUrgency > $1.reviewUrgency }
+        } catch {
+            return []
+        }
     }
     
     // MARK: - 智能复习推荐
@@ -139,21 +149,22 @@ class WordbookService {
         var learningWords: [SavedWord] = []
         
         for word in words {
-            switch word.masteryLevel {
-            case .new:
+            // 基于level判断单词状态
+            switch word.level {
+            case 0:
                 newWords.append(word)
-            case .mastered:
-                // 已掌握的词，除非很久没复习，否则不推荐
-                let daysSinceLastReview = currentTime.timeIntervalSince(word.lastReviewDate ?? word.addedDate) / (24 * 60 * 60)
-                if daysSinceLastReview > 30 {
+            case 9...10:
+                // 已精通的词，除非很久没复习，否则不推荐
+                let daysSinceAdded = currentTime.timeIntervalSince(word.addedDate) / (24 * 60 * 60)
+                if daysSinceAdded > 30 {
                     overdueWords.append(word)
                 }
             default:
                 let overdueTime = currentTime.timeIntervalSince(word.nextReviewDate)
                 
-                if overdueTime > 24 * 60 * 60 { // 逾期超过1天
+                if (overdueTime > 24 * 60 * 60) { // 逾期超过1天
                     overdueWords.append(word)
-                } else if overdueTime > 0 { // 今天需要复习
+                } else if (overdueTime > 0) { // 今天需要复习
                     todayWords.append(word)
                 } else {
                     learningWords.append(word)
@@ -163,9 +174,7 @@ class WordbookService {
         
         // 按紧急程度排序
         overdueWords.sort { word1, word2 in
-            let overdue1 = currentTime.timeIntervalSince(word1.nextReviewDate)
-            let overdue2 = currentTime.timeIntervalSince(word2.nextReviewDate)
-            return overdue1 > overdue2
+            word1.reviewUrgency > word2.reviewUrgency
         }
         
         return WordCategories(
@@ -197,117 +206,20 @@ class WordbookService {
         guard let index = words.firstIndex(where: { $0.id == wordId }) else { return }
         
         var word = words[index]
-        let now = Date()
         
-        // 更新学习记录
-        word.totalReviews += 1
-        word.lastReviewDate = now
-        
+        // 使用新的API记录结果
         switch result.type {
         case .correct:
-            word.correctCount += 1
-            increaseReviewInterval(&word, currentTime: now)
-            
+            word.recordCorrect()
         case .incorrect:
-            word.wrongCount += 1
-            decreaseReviewInterval(&word, currentTime: now)
-            
+            word.recordWrong()
         case .skipped:
-            // 跳过不计入正确/错误，但计入总数
-            // 保持当前间隔不变
-            word.nextReviewDate = now.addingTimeInterval(word.reviewInterval)
+            // 跳过不计入正确/错误
+            break
         }
-        
-        // 重新评估掌握程度
-        updateMasteryLevel(&word)
         
         words[index] = word
         try StorageService.shared.saveToFile(words, filename: "savedWords.json")
-    }
-    
-    // MARK: - 间隔调整逻辑
-    
-    private func increaseReviewInterval(_ word: inout SavedWord, currentTime: Date) {
-        // 计算用户的复习延迟情况
-        let plannedTime = word.nextReviewDate
-        let actualDelay = currentTime.timeIntervalSince(plannedTime)
-        
-        // 找到当前间隔在基础间隔中的位置
-        let currentIntervalIndex = baseIntervals.firstIndex { $0 >= word.reviewInterval } ?? baseIntervals.count - 1
-        
-        if actualDelay <= 0 {
-            // 用户按时或提前复习，正常增加间隔
-            let nextIndex = min(currentIntervalIndex + 1, baseIntervals.count - 1)
-            word.reviewInterval = baseIntervals[nextIndex]
-        } else if actualDelay <= 24 * 60 * 60 {
-            // 延迟1天内，稍微保守增加间隔
-            let nextIndex = min(currentIntervalIndex + 1, baseIntervals.count - 1)
-            word.reviewInterval = baseIntervals[nextIndex] * 0.8
-        } else {
-            // 延迟超过1天，间隔增加更保守
-            word.reviewInterval = min(word.reviewInterval * 1.2, baseIntervals[currentIntervalIndex])
-        }
-        
-        word.nextReviewDate = currentTime.addingTimeInterval(word.reviewInterval)
-    }
-    
-    private func decreaseReviewInterval(_ word: inout SavedWord, currentTime: Date) {
-        // 根据答错频率决定回退程度
-        let accuracy = word.accuracyRate
-        
-        if accuracy < 0.3 {
-            // 答对率很低，重置到最开始
-            word.reviewInterval = baseIntervals[0]
-        } else if accuracy < 0.5 {
-            // 答对率较低，回退2级
-            let currentIndex = baseIntervals.firstIndex { $0 >= word.reviewInterval } ?? 0
-            let newIndex = max(0, currentIndex - 2)
-            word.reviewInterval = baseIntervals[newIndex]
-        } else {
-            // 偶尔错误，回退1级
-            let currentIndex = baseIntervals.firstIndex { $0 >= word.reviewInterval } ?? 0
-            let newIndex = max(0, currentIndex - 1)
-            word.reviewInterval = baseIntervals[newIndex]
-        }
-        
-        word.nextReviewDate = currentTime.addingTimeInterval(word.reviewInterval)
-    }
-    
-    // MARK: - 掌握程度评估
-    
-    private func updateMasteryLevel(_ word: inout SavedWord) {
-        let accuracy = word.accuracyRate
-        let reviewCount = word.totalReviews
-        
-        switch word.masteryLevel {
-        case .new:
-            // 新词 -> 学习中：只要开始学习就进入学习中
-            if reviewCount > 0 {
-                word.masteryLevel = .learning
-            }
-            
-        case .learning:
-            // 学习中 -> 复习中：答对率达到60%且复习次数>=3
-            if accuracy >= 0.6 && reviewCount >= 3 {
-                word.masteryLevel = .reviewing
-            }
-            
-        case .reviewing:
-            // 复习中 -> 已掌握：答对率达到85%且复习次数>=5
-            if accuracy >= 0.85 && reviewCount >= 5 {
-                word.masteryLevel = .mastered
-            }
-            // 复习中 -> 学习中：答对率下降到50%以下
-            else if accuracy < 0.5 {
-                word.masteryLevel = .learning
-            }
-            
-        case .mastered:
-            // 已掌握 -> 复习中：答对率下降到70%以下
-            if accuracy < 0.7 {
-                word.masteryLevel = .reviewing
-            }
-        }
     }
     
     // MARK: - 统计和分析
@@ -316,15 +228,19 @@ class WordbookService {
     func getWordbookStats() throws -> WordbookStats {
         let words = try loadSavedWords()
         let needReview = words.filter { $0.needsReview }.count
-        let masteryDistribution = Dictionary(grouping: words) { $0.masteryLevel }
+        
+        // 基于level分组统计
+        let levelDistribution = Dictionary(grouping: words) { word in
+            word.masteryDescription
+        }
         
         return WordbookStats(
             totalWords: words.count,
             needReviewCount: needReview,
-            newWords: masteryDistribution[.new]?.count ?? 0,
-            learningWords: masteryDistribution[.learning]?.count ?? 0,
-            reviewingWords: masteryDistribution[.reviewing]?.count ?? 0,
-            masteredWords: masteryDistribution[.mastered]?.count ?? 0
+            newWords: levelDistribution["新词"]?.count ?? 0,
+            learningWords: (levelDistribution["初学"]?.count ?? 0) + (levelDistribution["学习中"]?.count ?? 0),
+            reviewingWords: levelDistribution["熟悉"]?.count ?? 0,
+            masteredWords: (levelDistribution["掌握"]?.count ?? 0) + (levelDistribution["精通"]?.count ?? 0)
         )
     }
     
@@ -334,18 +250,18 @@ class WordbookService {
         
         // 分析用户的学习习惯
         let reviewTimes = words.compactMap { word -> TimeInterval? in
-            guard let lastReview = word.lastReviewDate else { return nil }
-            return lastReview.timeIntervalSince(word.nextReviewDate)
+            let overdue = Date().timeIntervalSince(word.nextReviewDate)
+            return overdue > 0 ? overdue : nil
         }
         
         let averageDelay = reviewTimes.isEmpty ? 0 : reviewTimes.reduce(0, +) / Double(reviewTimes.count)
-        let onTimeRate = Double(reviewTimes.filter { $0 <= 0 }.count) / Double(max(reviewTimes.count, 1))
+        let onTimeRate = Double(words.filter { !$0.needsReview }.count) / Double(max(words.count, 1))
         
         return LearningPattern(
             averageDelay: averageDelay,
             onTimeReviewRate: onTimeRate,
             totalWords: words.count,
-            activeWords: words.filter { $0.masteryLevel != .mastered }.count
+            activeWords: words.filter { $0.level < 9 }.count // level < 9 表示还在学习中
         )
     }
     
