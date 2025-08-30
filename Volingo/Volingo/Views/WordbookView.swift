@@ -125,7 +125,7 @@ struct WordbookStatsView: View {
                 )
                 
                 StatsCard(
-                    title: "复习中",
+                    title: "熟悉",
                     value: "\(stats.reviewingWords)",
                     color: .blue
                 )
@@ -172,7 +172,7 @@ struct WordbookFilterView: View {
     @Binding var selectedLevel: String?
     
     // 可选择的掌握程度选项
-    private let masteryOptions = ["新词", "初学", "学习中", "熟悉", "掌握", "精通"]
+    private let masteryOptions = ["新词", "学习中", "熟悉", "掌握", "精通"]
     
     var body: some View {
         VStack(spacing: 12) {

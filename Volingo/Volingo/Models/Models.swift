@@ -300,8 +300,7 @@ struct SavedWord: Codable, Identifiable {
     /// 掌握程度描述（基于当前level）
     var masteryDescription: String {
         switch level {
-        case 0: return "新词"           // Level 0: 立即复习
-        case 1...2: return "初学"       // Level 1-2: 10分钟-1小时
+        case 0...2: return "新词"           // Level 0: 立即复习
         case 3...4: return "学习中"     // Level 3-4: 8小时-1天
         case 5...6: return "熟悉"       // Level 5-6: 3天-1周
         case 7...8: return "掌握"       // Level 7-8: 2周-1月
@@ -313,8 +312,7 @@ struct SavedWord: Codable, Identifiable {
     /// 掌握程度对应的颜色
     var masteryColor: Color {
         switch level {
-        case 0: return .gray            // 新词
-        case 1...2: return .red         // 初学
+        case 0...2: return .red         // 新词
         case 3...4: return .orange      // 学习中
         case 5...6: return .blue        // 熟悉
         case 7...8: return .green       // 掌握

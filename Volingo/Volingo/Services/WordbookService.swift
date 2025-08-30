@@ -238,7 +238,7 @@ class WordbookService {
             totalWords: words.count,
             needReviewCount: needReview,
             newWords: levelDistribution["新词"]?.count ?? 0,
-            learningWords: (levelDistribution["初学"]?.count ?? 0) + (levelDistribution["学习中"]?.count ?? 0),
+            learningWords: levelDistribution["学习中"]?.count ?? 0,
             reviewingWords: levelDistribution["熟悉"]?.count ?? 0,
             masteredWords: (levelDistribution["掌握"]?.count ?? 0) + (levelDistribution["精通"]?.count ?? 0)
         )
