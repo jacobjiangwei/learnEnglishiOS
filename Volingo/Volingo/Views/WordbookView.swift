@@ -172,7 +172,7 @@ struct WordbookFilterView: View {
     @Binding var selectedLevel: String?
     
     // 可选择的掌握程度选项
-    private let masteryOptions = ["新词", "学习中", "熟悉", "掌握", "精通"]
+    private let masteryOptions = ["新词", "学习中", "熟悉", "掌握"]
     
     var body: some View {
         VStack(spacing: 12) {
