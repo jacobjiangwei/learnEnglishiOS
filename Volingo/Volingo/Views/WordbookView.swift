@@ -14,23 +14,20 @@ struct WordbookView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // 统计卡片区域
-                if !viewModel.isLoading && viewModel.wordbookStats.totalWords > 0 {
-                    WordbookStatsView(stats: viewModel.wordbookStats)
-                        .padding()
-                }
-                
-                // 筛选和搜索栏
-                WordbookFilterView(
-                    searchText: $viewModel.searchText,
-                    selectedLevel: $viewModel.selectedMasteryDescription
-                )
-                .padding(.horizontal)
-                .onChange(of: viewModel.searchText) { _, _ in
-                    viewModel.applyFilters()
-                }
-                .onChange(of: viewModel.selectedMasteryDescription) { _, _ in
-                    viewModel.applyFilters()
+                // 筛选和搜索栏（包含统计数字）
+                if !viewModel.isLoading {
+                    WordbookFilterView(
+                        searchText: $viewModel.searchText,
+                        selectedLevel: $viewModel.selectedMasteryDescription,
+                        stats: viewModel.wordbookStats
+                    )
+                    .padding(.horizontal)
+                    .onChange(of: viewModel.searchText) { _, _ in
+                        viewModel.applyFilters()
+                    }
+                    .onChange(of: viewModel.selectedMasteryDescription) { _, _ in
+                        viewModel.applyFilters()
+                    }
                 }
                 
                 // 内容区域
@@ -91,88 +88,25 @@ struct WordbookView: View {
     }
 }
 
-// MARK: - 统计卡片视图
-struct WordbookStatsView: View {
-    let stats: WordbookStats
-    
-    var body: some View {
-        VStack(spacing: 12) {
-            HStack {
-                StatsCard(
-                    title: "总词汇",
-                    value: "\(stats.totalWords)",
-                    color: .blue
-                )
-                
-                StatsCard(
-                    title: "待复习",
-                    value: "\(stats.needReviewCount)",
-                    color: .orange
-                )
-            }
-            
-            HStack {
-                StatsCard(
-                    title: "新词",
-                    value: "\(stats.newWords)",
-                    color: .red
-                )
-                
-                StatsCard(
-                    title: "学习中",
-                    value: "\(stats.learningWords)",
-                    color: .orange
-                )
-                
-                StatsCard(
-                    title: "熟悉",
-                    value: "\(stats.reviewingWords)",
-                    color: .blue
-                )
-                
-                StatsCard(
-                    title: "已掌握",
-                    value: "\(stats.masteredWords)",
-                    color: .green
-                )
-            }
-        }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-    }
-}
-
-struct StatsCard: View {
-    let title: String
-    let value: String
-    let color: Color
-    
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.title2)
-                .fontWeight(.bold)
-                .foregroundColor(color)
-            
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(Color.white)
-        .cornerRadius(8)
-    }
-}
-
 // MARK: - 筛选视图
 struct WordbookFilterView: View {
     @Binding var searchText: String
     @Binding var selectedLevel: String?
+    let stats: WordbookStats
     
     // 可选择的掌握程度选项
     private let masteryOptions = ["新词", "学习中", "熟悉", "掌握"]
+    
+    // 根据掌握程度获取对应的数量
+    private func getCount(for level: String) -> Int {
+        switch level {
+        case "新词": return stats.newWords
+        case "学习中": return stats.learningWords
+        case "熟悉": return stats.reviewingWords
+        case "掌握": return stats.masteredWords
+        default: return 0
+        }
+    }
     
     var body: some View {
         VStack(spacing: 12) {
@@ -201,6 +135,7 @@ struct WordbookFilterView: View {
                 HStack(spacing: 8) {
                     FilterChip(
                         title: "全部",
+                        count: stats.totalWords,
                         isSelected: selectedLevel == nil,
                         action: { selectedLevel = nil }
                     )
@@ -208,6 +143,7 @@ struct WordbookFilterView: View {
                     ForEach(masteryOptions, id: \.self) { option in
                         FilterChip(
                             title: option,
+                            count: getCount(for: option),
                             isSelected: selectedLevel == option,
                             action: { selectedLevel = option }
                         )
@@ -221,18 +157,26 @@ struct WordbookFilterView: View {
 
 struct FilterChip: View {
     let title: String
+    let count: Int
     let isSelected: Bool
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.caption)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(isSelected ? Color.blue : Color(.systemGray5))
-                .foregroundColor(isSelected ? .white : .primary)
-                .cornerRadius(16)
+            VStack(spacing: 2) {
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                
+                Text("\(count)")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(isSelected ? Color.blue : Color(.systemGray5))
+            .foregroundColor(isSelected ? .white : .primary)
+            .cornerRadius(16)
         }
     }
 }
