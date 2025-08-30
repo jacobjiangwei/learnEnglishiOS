@@ -228,6 +228,38 @@ struct ReviewIntervals {
     static func timeInterval(for level: Int) -> TimeInterval {
         return intervals[safe: level] ?? 0
     }
+    
+    // MARK: - 复习时机判断工具函数
+    
+    /// 判断单词是否应该复习 (基于添加时间和当前level)
+    static func shouldReview(addedDate: Date, currentLevel: Int, currentTime: Date = Date()) -> Bool {
+        let interval = timeInterval(for: currentLevel)
+        let nextReviewDate = addedDate.addingTimeInterval(interval)
+        return currentTime >= nextReviewDate
+    }
+    
+    /// 计算距离下次复习的时间描述
+    static func timeUntilNextReview(addedDate: Date, currentLevel: Int, currentTime: Date = Date()) -> String {
+        let interval = timeInterval(for: currentLevel)
+        let nextReviewDate = addedDate.addingTimeInterval(interval)
+        let timeInterval = nextReviewDate.timeIntervalSinceNow
+        
+        if timeInterval <= 0 {
+            return "需要复习"
+        }
+        
+        let hours = Int(timeInterval / 3600)
+        let days = hours / 24
+        
+        if days > 0 {
+            return "\(days)天后"
+        } else if hours > 0 {
+            return "\(hours)小时后"
+        } else {
+            let minutes = Int(timeInterval / 60)
+            return "\(minutes)分钟后"
+        }
+    }
 }
 
 // MARK: - 简化的生词本模型
@@ -252,9 +284,9 @@ struct SavedWord: Codable, Identifiable {
         return addedDate.addingTimeInterval(interval)
     }
     
-    /// 是否需要复习 = 当前时间 >= 下次复习时间
+    /// 是否需要复习 = 使用 ReviewIntervals 工具函数
     var needsReview: Bool {
-        return Date() >= nextReviewDate
+        return ReviewIntervals.shouldReview(addedDate: addedDate, currentLevel: level)
     }
     
     /// 当前复习间隔的描述
@@ -262,39 +294,9 @@ struct SavedWord: Codable, Identifiable {
         return ReviewIntervals.description(for: level)
     }
     
-    /// 距离下次复习的时间描述
+    /// 距离下次复习的时间描述 = 使用 ReviewIntervals 工具函数
     var timeUntilNextReview: String {
-        let reviewTime = nextReviewDate
-        let timeInterval = reviewTime.timeIntervalSinceNow
-        
-        if timeInterval <= 0 {
-            return "需要复习"
-        }
-        
-        let hours = Int(timeInterval / 3600)
-        let days = hours / 24
-        
-        if days > 0 {
-            return "\(days)天后"
-        } else if hours > 0 {
-            return "\(hours)小时后"
-        } else {
-            let minutes = Int(timeInterval / 60)
-            return "\(minutes)分钟后"
-        }
-    }
-    
-    /// 复习紧急程度（用于排序，逾期时间越长越紧急）
-    var reviewUrgency: Int {
-        let overdue = Date().timeIntervalSince(nextReviewDate)
-        if overdue <= 0 {
-            return 0 // 未到复习时间
-        }
-        
-        // 基础紧急程度 + 逾期小时数
-        let baseUrgency = ReviewIntervals.urgency(for: level)
-        let overdueHours = min(Int(overdue / 3600), 100) // 最多加100分
-        return baseUrgency * 10 + overdueHours
+        return ReviewIntervals.timeUntilNextReview(addedDate: addedDate, currentLevel: level)
     }
     
     /// 掌握程度描述（基于当前level）

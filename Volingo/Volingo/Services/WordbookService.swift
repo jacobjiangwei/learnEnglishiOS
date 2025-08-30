@@ -37,15 +37,46 @@ class WordbookService {
 
     
     /// 获取推荐复习的单词列表
-    func getRecommendedReviewWords(limit: Int = 20) throws -> [SavedWord] {
+    func getRecommendedReviewWords(limit: Int = 40) throws -> [SavedWord] {
         let allWords = try loadSavedWords()
+        let currentTime = Date()
         
-        // 简化逻辑：按复习紧急程度排序，取前 limit 个
-        return allWords
-            .filter { $0.needsReview }
-            .sorted { $0.reviewUrgency > $1.reviewUrgency }
-            .prefix(limit)
-            .map { $0 }
+        // 筛选需要复习的单词
+        let wordsToReview = selectWordsForReview(from: allWords, currentTime: currentTime)
+        
+        // 按优先级排序：level 越小越优先
+        let sortedWords = wordsToReview.sorted { $0.level < $1.level }
+        
+        // 限制数量
+        let maxCount = calculateOptimalReviewCount(totalWords: allWords.count)
+        return Array(sortedWords.prefix(min(limit, maxCount)))
+    }
+    
+    /// 筛选需要复习的单词
+    private func selectWordsForReview(from allWords: [SavedWord], currentTime: Date) -> [SavedWord] {
+        return allWords.filter { word in
+            // 1. Level 0-2 (新词) 全部包含
+            if word.level <= 2 {
+                return true
+            }
+            
+            // 2. 其他词：判断是否到了复习时间
+            return ReviewIntervals.shouldReview(
+                addedDate: word.addedDate,
+                currentLevel: word.level,
+                currentTime: currentTime
+            )
+        }
+    }
+    
+    /// 计算最佳复习数量
+    private func calculateOptimalReviewCount(totalWords: Int) -> Int {
+        switch totalWords {
+        case 0...20: return totalWords
+        case 21...50: return 25
+        case 51...100: return 30
+        default: return 40
+        }
     }
     
     /// 记录学习结果

@@ -32,8 +32,13 @@ struct WordbookView: View {
                 
                 // 内容区域
                 if viewModel.isLoading {
-                    LoadingView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack {
+                        ProgressView()
+                        Text("加载中...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if viewModel.savedWords.isEmpty {
                     EmptyWordbookView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -415,89 +420,6 @@ struct LearningProgressView: View {
         .padding()
         .background(Color(.systemGray6))
         .cornerRadius(12)
-    }
-}
-
-// MARK: - 复习会话视图（占位符）
-struct ReviewSessionView: View {
-    let words: [SavedWord]
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        NavigationView {
-            VStack {
-                Text("复习会话")
-                    .font(.title)
-                
-                Text("准备复习 \(words.count) 个单词")
-                    .foregroundColor(.secondary)
-                
-                // TODO: 实现复习功能
-                
-                Spacer()
-            }
-            .padding()
-            .navigationTitle("复习")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("关闭") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - 生词本专用的词义视图
-struct WordbookSensesView: View {
-    let senses: [WordSense]
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("释义")
-                .font(.headline)
-            
-            ForEach(Array(senses.enumerated()), id: \.offset) { index, sense in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("\(index + 1).")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                        
-                        Text(sense.pos)
-                            .font(.caption)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(4)
-                    }
-                    
-                    ForEach(Array(sense.translations.enumerated()), id: \.offset) { _, translation in
-                        Text("• \(translation)")
-                            .font(.body)
-                    }
-                    
-                    if !sense.examples.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(sense.examples.prefix(2)) { example in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(example.en)
-                                        .font(.caption)
-                                        .italic()
-                                    Text(example.zh)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding(.leading, 16)
-                            }
-                        }
-                    }
-                }
-                .padding(.bottom, 8)
-            }
-        }
     }
 }
 
