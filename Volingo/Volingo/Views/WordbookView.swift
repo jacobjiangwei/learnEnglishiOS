@@ -77,8 +77,17 @@ struct WordbookView: View {
         }
         .sheet(isPresented: $showingReviewSession) {
             ReviewSessionView(words: viewModel.getRecommendedReviewWords())
+                .onDisappear {
+                    // 复习完成后刷新数据
+                    viewModel.loadData()
+                }
         }
         .onAppear {
+            // 视图出现时加载数据
+            viewModel.loadData()
+        }
+        .refreshable {
+            // 支持下拉刷新
             viewModel.loadData()
         }
         .alert("错误", isPresented: .constant(viewModel.errorMessage != nil)) {
