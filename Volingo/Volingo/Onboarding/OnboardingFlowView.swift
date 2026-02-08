@@ -8,11 +8,12 @@
 import SwiftUI
 
 struct OnboardingFlowView: View {
-    @StateObject private var store = OnboardingStore()
+    @EnvironmentObject private var store: UserStateStore
     @State private var step: OnboardingStep = .welcome
     @State private var selectedLevel: UserLevel? = nil
     @State private var testScore: Double = 0
     @State private var confirmedLevel: UserLevel? = nil
+    @State private var attemptId = UUID()
 
     var body: some View {
         NavigationStack {
@@ -36,12 +37,13 @@ struct OnboardingFlowView: View {
                         LevelSelectView(selectedLevel: $selectedLevel) {
                             if let selectedLevel {
                                 store.updateSelectedLevel(selectedLevel)
+                                attemptId = UUID()
                                 step = .levelTest
                             }
                         }
                     case .levelTest:
                         if let selectedLevel {
-                            LevelTestView(level: selectedLevel) { score, recommended in
+                            LevelTestView(level: selectedLevel, attemptId: attemptId) { score, recommended in
                                 testScore = score
                                 confirmedLevel = recommended
                                 step = .result
@@ -54,15 +56,17 @@ struct OnboardingFlowView: View {
                             score: testScore,
                             onConfirm: {
                                 if let confirmedLevel {
-                                    store.complete(testScore: testScore, confirmedLevel: confirmedLevel)
+                                    store.completeOnboarding(testScore: testScore, confirmedLevel: confirmedLevel)
                                 }
                             },
                             onRetest: {
+                                attemptId = UUID()
                                 step = .levelTest
                             },
                             onDowngrade: { downgrade in
                                 selectedLevel = downgrade
                                 store.updateSelectedLevel(downgrade)
+                                attemptId = UUID()
                                 step = .levelTest
                             }
                         )
@@ -325,8 +329,8 @@ struct LevelTestView: View {
     @StateObject private var viewModel: LevelTestViewModel
     let onComplete: (Double, UserLevel) -> Void
 
-    init(level: UserLevel, onComplete: @escaping (Double, UserLevel) -> Void) {
-        _viewModel = StateObject(wrappedValue: LevelTestViewModel(level: level))
+    init(level: UserLevel, attemptId: UUID, onComplete: @escaping (Double, UserLevel) -> Void) {
+        _viewModel = StateObject(wrappedValue: LevelTestViewModel(level: level, attemptId: attemptId))
         self.onComplete = onComplete
     }
 

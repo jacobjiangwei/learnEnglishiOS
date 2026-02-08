@@ -211,14 +211,29 @@ struct LevelTestQuestion: Identifiable {
     let level: UserLevel       // Which level this question belongs to
 }
 
-// MARK: - Onboarding State (persisted)
+// MARK: - User State (persisted)
 
-struct OnboardingState: Codable {
-    var isCompleted: Bool = false
+struct UserState: Codable {
+    var isOnboardingCompleted: Bool = false
     var selectedLevel: UserLevel?
-    var testScore: Double?          // 0-1
-    var confirmedLevel: UserLevel?  // The final level after test
-    var completedAt: Date?
+    var confirmedLevel: UserLevel?
+    var lastAssessmentScore: Double?
+    var lastAssessmentAt: Date?
+    var createdAt: Date = Date()
+    var preferences: LearningPreferences = LearningPreferences()
+}
+
+struct LearningPreferences: Codable {
+    var dailyWordGoal: Int = 10
+    var dailyMinutesGoal: Int = 10
+    var studyMode: StudyMode = .balanced
+}
+
+enum StudyMode: String, Codable, CaseIterable {
+    case balanced = "均衡"
+    case exam = "应试"
+    case daily = "日常"
+    case speaking = "口语"
 }
 
 // MARK: - Welcome Page

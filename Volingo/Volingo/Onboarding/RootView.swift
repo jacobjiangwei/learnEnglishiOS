@@ -8,14 +8,16 @@
 import SwiftUI
 
 struct RootView: View {
-    @StateObject private var store = OnboardingStore()
+    @StateObject private var store = UserStateStore()
 
     var body: some View {
         Group {
-            if store.state.isCompleted {
+            if store.userState.isOnboardingCompleted {
                 ContentView()
+                    .environmentObject(store)
             } else {
                 OnboardingFlowView()
+                    .environmentObject(store)
             }
         }
     }
