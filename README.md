@@ -170,6 +170,67 @@
 
 ## 四、技术架构设计（iOS SwiftUI）
 
+### 4.0 Phase 1 海外架构设计 (Firebase + Backend)
+
+```mermaid
+flowchart LR
+    %% Client
+    subgraph iOS[iOS App]
+        A[Onboarding & Level Test]
+        B[Learning: Practice/Review/Dictionary]
+        C[Paywall & IAP]
+    end
+
+    %% Firebase
+    subgraph FB[Firebase]
+        FBAuth[Firebase Auth
+Apple/Google]
+        FBToken[ID Token / Refresh Token]
+        FBAnalytics[Analytics & Crashlytics]
+        FBRemote[Remote Config]
+    end
+
+    %% Backend
+    subgraph API[Backend API]
+        APIGW[FastAPI Service]
+        TokenVerify[Verify Firebase ID Token]
+        Biz[Business Logic
+Questions/Review/Sync]
+    end
+
+    %% Data
+    subgraph Data[Data Stores]
+        DB[(Database
+User Progress/Questions)]
+        Blob[(Object Storage
+Audio/Images)]
+    end
+
+    %% AI
+    subgraph AI[AI Providers]
+        LLM[LLM API
+Question Gen/Writing Feedback]
+    end
+
+    %% Flows
+    A --> FBAuth
+    FBAuth --> FBToken
+    FBToken --> TokenVerify
+    TokenVerify --> Biz
+    B --> APIGW
+    APIGW --> TokenVerify
+    Biz --> DB
+    Biz --> Blob
+    Biz --> LLM
+    C --> APIGW
+
+    %% Analytics
+    A --> FBAnalytics
+    B --> FBAnalytics
+    C --> FBAnalytics
+    FBRemote --> iOS
+```
+
 ### 4.1 核心技术栈
 
 | 技术层次 | 技术选型 | 说明 |
@@ -531,3 +592,91 @@ struct StudyStats: Codable
 - **开发团队**: iOS开发 + AI算法 + 内容设计
 - **许可协议**: 商业闭源
 - **项目周期**: 12个月完整版本
+
+---
+
+## 九、全球先行商业化计划
+
+> 核心策略: 先全球上架(除中国大陆)验证商业模式, 再回攻国内市场
+
+### 1. 总体策略
+
+- **Phase A (全球市场优先)**: 个人开发者账号上架全球 App Store, 使用 Azure 云 + Google/Apple 登录, 快速验证留存和付费
+- **Phase B (中国大陆市场)**: 商业模式验证后, 注册公司、ICP备案、软著申请, 接入国内登录与支付, 进入中国区上架
+
+### 2. 先全球的优势
+
+- **低行政成本**: 无需公司注册、ICP备案即可上线
+- **上线速度快**: App Store 全球区审核周期短
+- **覆盖海外华人**: 大量海外华人和非中国区 Apple ID 用户
+- **美元定价更高**: 订阅单价更高, 收益更可观
+- **品牌背书**: "海外知名 App" 更易回攻国内
+
+### 3. Phase A (全球市场) - 1 周 MVP 上线
+
+**目标**: 以现有词典+生词本+复习为核心, 补齐 Onboarding 和题库, 先上线全球区
+
+**关键交付**:
+- **Onboarding**: 选择学习目标(KET/初中/高中/四级/六级/考研/托福/日常)
+- **等级练习**: AI 预生成题库 JSON, 覆盖多题型
+- **复习优化**: 题目选项从词典库随机抽取, 替换硬编码列表
+- **用户中心**: 等级、学习统计、打卡、每日目标
+- **Tab 精简**: 词典/练习/生词本/我的
+
+**验收标准**:
+- 新用户可以完成 Onboarding
+- 查词 → 加入生词本 → 复习完整闭环
+- 等级练习可用, 每等级至少 100 题
+- App Store 全球区审核通过
+
+### 4. Phase A (全球市场) - 2-4 周云端 + AI
+
+**云端基础设施 (Azure)**:
+- App Service (FastAPI)
+- Cosmos DB (Serverless)
+- Blob Storage
+- Static Web Apps (隐私政策/落地页)
+
+**核心能力**:
+- Google Sign-In + Sign in with Apple
+- 生词本云端同步
+- AI 动态出题(基于用户学习内容)
+- AI 写作批改
+- IAP 订阅(月/年)
+
+**验收标准**:
+- 登录、云同步、动态出题、写作批改全部跑通
+- 订阅流程可用
+
+### 5. Phase B (中国大陆市场) - 回攻策略
+
+**行政准备**:
+- 苏州注册有限公司
+- ICP 备案
+- 软著申请
+
+**技术适配**:
+- 登录: 微信 + 手机验证码
+- 支付: iOS IAP, 如做 Android/网页则加微信/支付宝
+- 云端: Azure 中国区或国内云
+- AI: DeepSeek/通义千问等国内合规模型
+
+**运营策略**:
+- 关键词 ASO: 背单词/英语学习/四级/考研
+- 内容种草: 小红书/抖音/B站
+- 邀请裂变: 邀请得 VIP 天数
+
+### 6. 订阅体系建议 (全球)
+
+| 方案 | 价格(USD) | 功能 |
+|------|-----------|------|
+| Free | $0 | 每日查词 30 次、生词本 50 词、基础练习 10 题 |
+| Pro 月卡 | $3.99/月 | 无限查词+无限生词本+AI 动态出题 |
+| Pro 年卡 | $29.99/年 | Pro 全部 + AI 写作批改 + 情景对话 + 语音评测 |
+
+### 7. 风险与应对
+
+- **AI 内容质量波动**: 预生成题库 + 人工抽检
+- **API 成本过高**: 缓存题目、限制高频调用
+- **海外用户规模不足**: 增加英文界面和非华人学习路径
+- **国内竞争激烈**: 以 AI 个性化和情景对话差异化

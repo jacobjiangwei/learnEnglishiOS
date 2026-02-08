@@ -11,7 +11,7 @@ import SwiftUI
 struct VolingoApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView()
                 .onAppear {
                     Task {
                         await try? DictionaryService.shared.searchWord("english")
