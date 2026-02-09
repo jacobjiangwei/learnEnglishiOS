@@ -97,6 +97,117 @@
 
 ## 4. Cosmos DB 设计建议
 
+## 4.1 数据库分层设计 (Database Layer)
+
+目标: 支撑三段式流程
+1) 书籍批量导入 -> 形成可追溯的内容源
+2) 出题 + 审核 + 入库 -> 形成稳定题库
+3) 客户端消费 -> 按等级/题型/难度拉题
+
+### A. 内容源层 (Content Source)
+
+**用途**: 管理授权教材和结构化内容, 作为题库生成源头
+
+容器与字段建议:
+
+- `Books`
+  - `id`, `title`, `publisher`, `edition`, `grade`, `system`, `isbn`
+  - `status`: active/archived
+
+- `BookChapters`
+  - `id`, `bookId`, `chapter`, `title`, `order`
+
+- `BookUnits`
+  - `id`, `bookId`, `chapterId`, `unit`, `title`, `order`
+
+- `BookLessons`
+  - `id`, `bookId`, `unitId`, `lesson`, `title`, `order`
+  - `textBlocks`: 段落与句子列表
+  - `dialogues`: 对话列表 (可选)
+
+- `BookExercises`
+  - `id`, `bookId`, `unitId`, `lessonId`
+  - `exerciseType`, `stem`, `options`, `answer`, `explanation`
+  - `relatedPoints`: 关联词汇/语法点
+
+- `BookVocab`
+  - `id`, `bookId`, `unitId`, `lessonId`
+  - `word`, `phonetic`, `pos`, `definition`, `example`
+  - `level`, `tags`
+
+- `BookGrammarPoints`
+  - `id`, `bookId`, `unitId`, `lessonId`
+  - `title`, `rule`, `examples[]`, `difficulty`
+
+- `BookMedia`
+  - `id`, `bookId`, `unitId`, `lessonId`
+  - `type`: image/audio/video
+  - `url`, `caption`
+
+Partition Key:
+- `Books`: `system`
+- `BookChapters`: `bookId`
+- `BookUnits`: `bookId`
+- `BookLessons`: `bookId`
+- `BookExercises`: `bookId`
+- `BookVocab`: `bookId`
+- `BookGrammarPoints`: `bookId`
+- `BookMedia`: `bookId`
+
+### B. 生成层 (Question Generation)
+
+**用途**: AI 生成题目, 支持审核、版本控制
+
+容器与字段建议:
+
+- `GeneratedQuestions`
+  - `id`, `sourceBookId`, `sourceUnitId`
+  - `level`, `system`, `type`, `skill`, `difficulty`
+  - `stem`, `options`, `answer`, `explanation`
+  - `reviewStatus`: draft/reviewing/approved/rejected
+  - `reviewerId`, `reviewNotes`
+  - `version`, `createdAt`
+
+Partition Key:
+- `GeneratedQuestions`: `reviewStatus`
+
+### C. 题库层 (Question Bank)
+
+**用途**: 对外发布题库, 仅保留审核通过版本
+
+- `Questions`
+  - `id`, `level`, `system`, `type`, `skill`, `difficulty`
+  - `stem`, `options`, `correctIndex`, `explanation`
+  - `media`, `tags`, `source`, `version`, `createdAt`
+
+Partition Key:
+- `Questions`: `level`
+
+### D. 消费层 (Delivery & Progress)
+
+**用途**: 提供客户端拉题与用户练习记录
+
+- `QuestionSets` (可选)
+  - `id`, `level`, `type`, `questionIds[]`, `createdAt`
+
+- `UserProgress`
+  - `userId`, `questionId`, `isCorrect`, `timeSpent`, `timestamp`
+
+Partition Key:
+- `UserProgress`: `userId`
+
+---
+
+## 4.2 端到端流程映射
+
+1) **书籍导入** -> `Books` + `BookUnits`
+2) **AI 生成题目** -> `GeneratedQuestions` (draft)
+3) **审核** -> `GeneratedQuestions` (approved)
+4) **入库** -> `Questions`
+5) **客户端拉题** -> `Questions` / `QuestionSets`
+
+---
+
 **容器划分**
 - `Questions`: 题库主表
 - `ContentUnits`: 教材结构化内容
