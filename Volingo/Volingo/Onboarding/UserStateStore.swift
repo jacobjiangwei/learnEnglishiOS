@@ -10,6 +10,8 @@ import SwiftUI
 
 final class UserStateStore: ObservableObject {
     @Published private(set) var userState: UserState = UserState()
+    @Published var onboardingEntry: OnboardingEntry = .full
+    @Published var onboardingSkipTest: Bool = false
     private let storageFile = "user_state.json"
 
     init() {
@@ -18,6 +20,11 @@ final class UserStateStore: ObservableObject {
 
     func updateSelectedLevel(_ level: UserLevel) {
         userState.selectedLevel = level
+        save()
+    }
+
+    func updateSelectedTextbook(_ textbook: TextbookOption) {
+        userState.selectedTextbook = textbook
         save()
     }
 
@@ -32,9 +39,52 @@ final class UserStateStore: ObservableObject {
     func resetOnboarding() {
         userState.isOnboardingCompleted = false
         userState.selectedLevel = nil
+        userState.selectedTextbook = nil
         userState.confirmedLevel = nil
         userState.lastAssessmentScore = nil
         userState.lastAssessmentAt = nil
+        onboardingEntry = .full
+        onboardingSkipTest = false
+        save()
+    }
+
+    func startModifyGoal() {
+        onboardingEntry = .selectLevel
+        onboardingSkipTest = true
+        userState.isOnboardingCompleted = false
+        userState.selectedLevel = nil
+        userState.selectedTextbook = nil
+        userState.confirmedLevel = nil
+        userState.lastAssessmentScore = nil
+        userState.lastAssessmentAt = nil
+        save()
+    }
+
+    func startRetest(keepTextbook: Bool = true) {
+        onboardingEntry = .retest
+        onboardingSkipTest = false
+        userState.isOnboardingCompleted = false
+        if let confirmed = userState.confirmedLevel {
+            userState.selectedLevel = confirmed
+        }
+        if !keepTextbook {
+            userState.selectedTextbook = nil
+        }
+        userState.confirmedLevel = nil
+        userState.lastAssessmentScore = nil
+        userState.lastAssessmentAt = nil
+        save()
+    }
+
+    func completeOnboardingWithoutTest(selectedLevel: UserLevel, textbook: TextbookOption?) {
+        userState.isOnboardingCompleted = true
+        userState.selectedLevel = selectedLevel
+        userState.confirmedLevel = selectedLevel
+        userState.selectedTextbook = textbook
+        userState.lastAssessmentScore = nil
+        userState.lastAssessmentAt = nil
+        onboardingEntry = .full
+        onboardingSkipTest = false
         save()
     }
 

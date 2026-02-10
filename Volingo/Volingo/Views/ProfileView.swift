@@ -9,7 +9,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject private var onboardingStore: UserStateStore
-    @State private var showResetAlert = false
+    @State private var pendingAction: ProfileAction? = nil
 
     var body: some View {
         NavigationView {
@@ -19,6 +19,13 @@ struct ProfileView: View {
                         Text("已定级")
                         Spacer()
                         Text(currentLevelLabel)
+                            .foregroundColor(.secondary)
+                    }
+
+                    HStack {
+                        Text("教材")
+                        Spacer()
+                        Text(currentTextbookLabel)
                             .foregroundColor(.secondary)
                     }
 
@@ -34,13 +41,18 @@ struct ProfileView: View {
 
                 Section(header: Text("学习设置")) {
                     Button("修改学习目标") {
-                        showResetAlert = true
+                        pendingAction = .modifyGoal
                     }
 
                     Button("重新定级测试") {
-                        showResetAlert = true
+                        pendingAction = .retest
                     }
                     .foregroundColor(.orange)
+
+                    Button("重新完整设置") {
+                        pendingAction = .fullReset
+                    }
+                    .foregroundColor(.red)
                 }
 
                 Section(header: Text("账号")) {
@@ -49,13 +61,36 @@ struct ProfileView: View {
                 }
             }
             .navigationTitle("我的")
-            .alert("重新定级?", isPresented: $showResetAlert) {
-                Button("取消", role: .cancel) {}
-                Button("确认", role: .destructive) {
-                    onboardingStore.resetOnboarding()
+            .alert(item: $pendingAction) { action in
+                switch action {
+                case .modifyGoal:
+                    return Alert(
+                        title: Text("修改学习目标?"),
+                        message: Text("将重新选择等级与教材，不会进入测试。"),
+                        primaryButton: .destructive(Text("确认"), action: {
+                            onboardingStore.startModifyGoal()
+                        }),
+                        secondaryButton: .cancel(Text("取消"))
+                    )
+                case .retest:
+                    return Alert(
+                        title: Text("重新定级测试?"),
+                        message: Text("将保留教材选择，并直接进入测试。"),
+                        primaryButton: .destructive(Text("确认"), action: {
+                            onboardingStore.startRetest(keepTextbook: true)
+                        }),
+                        secondaryButton: .cancel(Text("取消"))
+                    )
+                case .fullReset:
+                    return Alert(
+                        title: Text("重新完整设置?"),
+                        message: Text("将重新开始全部流程（欢迎页、等级、教材、测试）。"),
+                        primaryButton: .destructive(Text("确认"), action: {
+                            onboardingStore.resetOnboarding()
+                        }),
+                        secondaryButton: .cancel(Text("取消"))
+                    )
                 }
-            } message: {
-                Text("将重新进入 Onboarding 并进行等级测试。")
             }
         }
     }
@@ -69,6 +104,21 @@ struct ProfileView: View {
         }
         return "未定级"
     }
+
+    private var currentTextbookLabel: String {
+        if let textbook = onboardingStore.userState.selectedTextbook {
+            return textbook.rawValue
+        }
+        return "未选择"
+    }
+}
+
+private enum ProfileAction: String, Identifiable {
+    case modifyGoal
+    case retest
+    case fullReset
+
+    var id: String { rawValue }
 }
 
 #Preview {

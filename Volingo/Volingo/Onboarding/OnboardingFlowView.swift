@@ -11,9 +11,11 @@ struct OnboardingFlowView: View {
     @EnvironmentObject private var store: UserStateStore
     @State private var step: OnboardingStep = .welcome
     @State private var selectedLevel: UserLevel? = nil
+    @State private var selectedTextbook: TextbookOption? = nil
     @State private var testScore: Double = 0
     @State private var confirmedLevel: UserLevel? = nil
     @State private var attemptId = UUID()
+    @State private var didInitialize = false
 
     var body: some View {
         NavigationStack {
@@ -37,10 +39,28 @@ struct OnboardingFlowView: View {
                         LevelSelectView(selectedLevel: $selectedLevel) {
                             if let selectedLevel {
                                 store.updateSelectedLevel(selectedLevel)
+                                selectedTextbook = TextbookOption.recommended(for: selectedLevel)
                                 attemptId = UUID()
-                                step = .levelTest
+                                step = .textbookSelect
                             }
                         }
+                    case .textbookSelect:
+                        TextbookSelectView(
+                            selectedTextbook: $selectedTextbook,
+                            recommendedTextbook: selectedLevel.map { TextbookOption.recommended(for: $0) },
+                            onContinue: {
+                            if let selectedTextbook, let selectedLevel {
+                                if store.onboardingSkipTest {
+                                    store.completeOnboardingWithoutTest(selectedLevel: selectedLevel, textbook: selectedTextbook)
+                                } else {
+                                    store.updateSelectedTextbook(selectedTextbook)
+                                    attemptId = UUID()
+                                    step = .levelTest
+                                }
+                            }
+                        },
+                            availableOptions: selectedLevel.map { TextbookOption.options(for: $0) } ?? []
+                        )
                     case .levelTest:
                         if let selectedLevel {
                             LevelTestView(level: selectedLevel, attemptId: attemptId) { score, recommended in
@@ -77,6 +97,30 @@ struct OnboardingFlowView: View {
                 .padding(.horizontal, 20)
             }
         }
+        .onAppear {
+            guard !didInitialize else { return }
+            didInitialize = true
+
+            switch store.onboardingEntry {
+            case .full:
+                break
+            case .selectLevel:
+                step = .levelSelect
+            case .selectTextbook:
+                step = .textbookSelect
+            case .retest:
+                if let level = store.userState.selectedLevel ?? store.userState.confirmedLevel {
+                    selectedLevel = level
+                    selectedTextbook = store.userState.selectedTextbook
+                    attemptId = UUID()
+                    step = .levelTest
+                } else {
+                    step = .levelSelect
+                }
+            }
+
+            store.onboardingEntry = .full
+        }
     }
 
     private var stepHeader: some View {
@@ -96,6 +140,7 @@ struct OnboardingFlowView: View {
 enum OnboardingStep {
     case welcome
     case levelSelect
+    case textbookSelect
     case levelTest
     case result
 
@@ -103,6 +148,7 @@ enum OnboardingStep {
         switch self {
         case .welcome:     return "开启学习之旅"
         case .levelSelect: return "选择学习等级"
+        case .textbookSelect: return "选择教材体系"
         case .levelTest:   return "智能定级测试"
         case .result:      return "测试结果"
         }
@@ -110,10 +156,11 @@ enum OnboardingStep {
 
     var stepHint: String {
         switch self {
-        case .welcome:     return "1/4"
-        case .levelSelect: return "2/4"
-        case .levelTest:   return "3/4"
-        case .result:      return "4/4"
+        case .welcome:        return "1/5"
+        case .levelSelect:    return "2/5"
+        case .textbookSelect: return "3/5"
+        case .levelTest:      return "4/5"
+        case .result:         return "5/5"
         }
     }
 }
@@ -205,6 +252,113 @@ struct LevelSelectView: View {
                 .disabled(selectedLevel == nil)
             }
         }
+    }
+}
+
+struct TextbookSelectView: View {
+    @Binding var selectedTextbook: TextbookOption?
+    let recommendedTextbook: TextbookOption?
+    let onContinue: () -> Void
+    let availableOptions: [TextbookOption]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("请选择教材体系")
+                    .font(.system(size: 18, weight: .semibold))
+
+                ForEach(TextbookGroup.allCases) { group in
+                    let groupOptions = availableOptions.filter { $0.group == group }
+                    if !groupOptions.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(group.rawValue)
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.secondary)
+
+                            ForEach(groupOptions) { option in
+                                TextbookCard(
+                                    option: option,
+                                    isSelected: selectedTextbook == option,
+                                    isRecommended: recommendedTextbook == option
+                                )
+                                .onTapGesture {
+                                    withAnimation(.spring()) {
+                                        selectedTextbook = option
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Button(action: onContinue) {
+                    Text("进入测试")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(selectedTextbook == nil ? Color.gray.opacity(0.4) : Color.blue)
+                        .cornerRadius(14)
+                }
+                .disabled(selectedTextbook == nil)
+            }
+        }
+    }
+}
+
+struct TextbookCard: View {
+    let option: TextbookOption
+    let isSelected: Bool
+    let isRecommended: Bool
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Circle()
+                .fill(option.group.color.opacity(0.15))
+                .frame(width: 46, height: 46)
+                .overlay(
+                    Image(systemName: option.group.icon)
+                        .foregroundColor(option.group.color)
+                        .font(.system(size: 22, weight: .bold))
+                )
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(option.rawValue)
+                    .font(.system(size: 17, weight: .bold))
+                Text(option.subtitle)
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 6) {
+                if isRecommended {
+                    Text("推荐")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(option.group.color)
+                        .clipShape(Capsule())
+                }
+
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(isSelected ? option.group.color.opacity(0.12) : Color.white)
+                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 4)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(isSelected ? option.group.color : Color.clear, lineWidth: 1.5)
+        )
     }
 }
 

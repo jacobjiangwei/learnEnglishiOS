@@ -201,6 +201,157 @@ enum LevelGroup: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Textbook
+
+enum TextbookOption: String, Codable, CaseIterable, Identifiable {
+    case primaryRenjiao = "小学·人教版"
+    case primaryForeignResearch = "小学·外研版"
+    case primaryYilin = "小学·译林版"
+    case primaryShanghai = "小学·沪教版"
+    case primaryOxford = "小学·牛津版"
+    case juniorRenjiao = "初中·人教版"
+    case juniorForeignResearch = "初中·外研版"
+    case juniorYilin = "初中·译林版"
+    case juniorShanghai = "初中·沪教版"
+    case juniorOxford = "初中·牛津版"
+    case seniorRenjiao = "高中·人教版"
+    case seniorForeignResearch = "高中·外研版"
+    case seniorYilin = "高中·译林版"
+    case seniorShanghai = "高中·沪教版"
+    case seniorOxford = "高中·牛津版"
+    case collegeCet = "大学英语（四级/六级）"
+    case graduateExam = "考研英语"
+    case preschoolPhonics = "启蒙/自然拼读"
+    case cefr = "CEFR 分级"
+    case cambridge = "剑桥 English in Use"
+    case longman = "朗文 Speakout/Cutting Edge"
+    case ielts = "雅思备考"
+    case toefl = "托福备考"
+
+    var id: String { rawValue }
+
+    var group: TextbookGroup {
+        switch self {
+        case .primaryRenjiao, .primaryForeignResearch, .primaryYilin, .primaryShanghai, .primaryOxford,
+             .juniorRenjiao, .juniorForeignResearch, .juniorYilin, .juniorShanghai, .juniorOxford,
+             .seniorRenjiao, .seniorForeignResearch, .seniorYilin, .seniorShanghai, .seniorOxford,
+             .collegeCet, .graduateExam, .preschoolPhonics:
+            return .gradeSync
+        case .cefr:
+            return .generalLevel
+        case .cambridge, .longman:
+            return .international
+        case .ielts, .toefl:
+            return .examPrep
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .primaryRenjiao:        return "小学主流版本"
+        case .primaryForeignResearch:return "小学主流版本"
+        case .primaryYilin:          return "小学主流版本"
+        case .primaryShanghai:       return "小学主流版本"
+        case .primaryOxford:         return "小学主流版本"
+        case .juniorRenjiao:         return "初中主流版本"
+        case .juniorForeignResearch: return "初中主流版本"
+        case .juniorYilin:           return "初中主流版本"
+        case .juniorShanghai:        return "初中主流版本"
+        case .juniorOxford:          return "初中主流版本"
+        case .seniorRenjiao:         return "高中主流版本"
+        case .seniorForeignResearch: return "高中主流版本"
+        case .seniorYilin:           return "高中主流版本"
+        case .seniorShanghai:        return "高中主流版本"
+        case .seniorOxford:          return "高中主流版本"
+        case .collegeCet:        return "大学英语体系"
+        case .graduateExam:      return "考研词汇与阅读"
+        case .preschoolPhonics:  return "启蒙与发音基础"
+        case .cefr:              return "国际通用等级"
+        case .cambridge:         return "语法+词汇体系化"
+        case .longman:           return "口语与场景表达"
+        case .ielts:             return "题型与评分导向"
+        case .toefl:             return "学术英语导向"
+        }
+    }
+
+    static func recommended(for level: UserLevel) -> TextbookOption {
+        switch level {
+        case .primary:
+            return .primaryRenjiao
+        case .junior1, .junior2, .junior3:
+            return .juniorRenjiao
+        case .senior1, .senior2, .senior3:
+            return .seniorRenjiao
+        case .cet4, .cet6:
+            return .collegeCet
+        case .graduate:
+            return .graduateExam
+        case .daily:
+            return .cefr
+        case .ket, .pet, .fce, .cae, .cpe:
+            return .cambridge
+        case .cefrA1, .cefrA2, .cefrB1, .cefrB2, .cefrC1, .cefrC2:
+            return .cefr
+        case .ielts:
+            return .ielts
+        case .toefl:
+            return .toefl
+        }
+    }
+
+    static func options(for level: UserLevel) -> [TextbookOption] {
+        switch level {
+        case .primary:
+            return [.primaryRenjiao, .primaryForeignResearch, .primaryYilin, .primaryShanghai, .primaryOxford]
+        case .junior1, .junior2, .junior3:
+            return [.juniorRenjiao, .juniorForeignResearch, .juniorYilin, .juniorShanghai, .juniorOxford]
+        case .senior1, .senior2, .senior3:
+            return [.seniorRenjiao, .seniorForeignResearch, .seniorYilin, .seniorShanghai, .seniorOxford]
+        case .cet4, .cet6:
+            return [.collegeCet]
+        case .graduate:
+            return [.graduateExam]
+        case .daily:
+            return [.cefr, .longman]
+        case .ket, .pet, .fce, .cae, .cpe:
+            return [.cambridge, .cefr]
+        case .cefrA1, .cefrA2, .cefrB1, .cefrB2, .cefrC1, .cefrC2:
+            return [.cefr]
+        case .ielts:
+            return [.ielts]
+        case .toefl:
+            return [.toefl]
+        }
+    }
+}
+
+enum TextbookGroup: String, CaseIterable, Identifiable {
+    case gradeSync = "学段版本"
+    case generalLevel = "通用分级"
+    case international = "国际教材"
+    case examPrep = "考试备考"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .gradeSync:     return "books.vertical.fill"
+        case .generalLevel:  return "chart.bar.fill"
+        case .international: return "globe.europe.africa.fill"
+        case .examPrep:      return "pencil.and.outline"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .gradeSync:     return .orange
+        case .generalLevel:  return .teal
+        case .international: return .indigo
+        case .examPrep:      return .red
+        }
+    }
+}
+
 // MARK: - Level Test Question
 
 struct LevelTestQuestion: Identifiable {
@@ -216,11 +367,19 @@ struct LevelTestQuestion: Identifiable {
 struct UserState: Codable {
     var isOnboardingCompleted: Bool = false
     var selectedLevel: UserLevel?
+    var selectedTextbook: TextbookOption?
     var confirmedLevel: UserLevel?
     var lastAssessmentScore: Double?
     var lastAssessmentAt: Date?
     var createdAt: Date = Date()
     var preferences: LearningPreferences = LearningPreferences()
+}
+
+enum OnboardingEntry {
+    case full
+    case selectLevel
+    case selectTextbook
+    case retest
 }
 
 struct LearningPreferences: Codable {

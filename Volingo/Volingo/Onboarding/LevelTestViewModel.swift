@@ -72,7 +72,23 @@ enum LevelTestQuestionBank {
 
         var generator = SeededGenerator(seed: attemptId.uuidString.hashValue)
         pool.shuffle(using: &generator)
-        return Array(pool.prefix(max(6, min(count, pool.count))))
+        let selected = Array(pool.prefix(max(6, min(count, pool.count))))
+        return selected.map { shuffledOptions(for: $0, generator: &generator) }
+    }
+
+    private static func shuffledOptions(for question: LevelTestQuestion, generator: inout SeededGenerator) -> LevelTestQuestion {
+        let indices = Array(question.options.indices)
+        var shuffled = indices
+        shuffled.shuffle(using: &generator)
+
+        let newOptions = shuffled.map { question.options[$0] }
+        let newCorrectIndex = shuffled.firstIndex(of: question.correctIndex) ?? question.correctIndex
+        return LevelTestQuestion(
+            stem: question.stem,
+            options: newOptions,
+            correctIndex: newCorrectIndex,
+            level: question.level
+        )
     }
 
     private static func baseQuestions(for level: UserLevel) -> [LevelTestQuestion] {
