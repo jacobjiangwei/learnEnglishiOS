@@ -14,7 +14,12 @@ import SwiftUI
 /// Display order follows the enum declaration.
 enum UserLevel: String, Codable, CaseIterable, Identifiable {
     // Domestic system
-    case primary     = "小学"
+    case primary1    = "小学一年级"
+    case primary2    = "小学二年级"
+    case primary3    = "小学三年级"
+    case primary4    = "小学四年级"
+    case primary5    = "小学五年级"
+    case primary6    = "小学六年级"
     case junior1     = "初一"
     case junior2     = "初二"
     case junior3     = "初三"
@@ -46,7 +51,12 @@ enum UserLevel: String, Codable, CaseIterable, Identifiable {
     /// Short Chinese subtitle shown below the label.
     var subtitle: String {
         switch self {
-        case .primary:   return "小学阶段"
+        case .primary1:  return "小学一年级"
+        case .primary2:  return "小学二年级"
+        case .primary3:  return "小学三年级"
+        case .primary4:  return "小学四年级"
+        case .primary5:  return "小学五年级"
+        case .primary6:  return "小学六年级"
         case .junior1:   return "初中一年级"
         case .junior2:   return "初中二年级"
         case .junior3:   return "初中三年级"
@@ -76,7 +86,8 @@ enum UserLevel: String, Codable, CaseIterable, Identifiable {
     /// Friendly group header used in the picker.
     var group: LevelGroup {
         switch self {
-           case .primary:                        return .domesticPrimary
+           case .primary1, .primary2, .primary3,
+                .primary4, .primary5, .primary6: return .domesticPrimary
            case .junior1, .junior2, .junior3:    return .domesticMiddle
            case .senior1, .senior2, .senior3:    return .domesticHigh
            case .cet4, .cet6:                    return .domesticCollege
@@ -98,7 +109,12 @@ enum UserLevel: String, Codable, CaseIterable, Identifiable {
     /// Approximate vocabulary size for this level — shown as context to parents.
     var vocabRange: String {
         switch self {
-        case .primary:   return "~800 词"
+        case .primary1:  return "~400 词"
+        case .primary2:  return "~600 词"
+        case .primary3:  return "~800 词"
+        case .primary4:  return "~1,000 词"
+        case .primary5:  return "~1,200 词"
+        case .primary6:  return "~1,500 词"
         case .junior1:   return "~1,200 词"
         case .junior2:   return "~1,800 词"
         case .junior3:   return "~2,500 词"
@@ -131,8 +147,13 @@ enum UserLevel: String, Codable, CaseIterable, Identifiable {
     /// Suggested fallback level if the user fails the test.
     var fallbackLevel: UserLevel? {
         switch self {
-        case .primary:   return nil
-        case .junior1:   return .primary
+        case .primary1:  return nil
+        case .primary2:  return .primary1
+        case .primary3:  return .primary2
+        case .primary4:  return .primary3
+        case .primary5:  return .primary4
+        case .primary6:  return .primary5
+        case .junior1:   return .primary6
         case .junior2:   return .junior1
         case .junior3:   return .junior2
         case .senior1:   return .junior3
@@ -155,6 +176,25 @@ enum UserLevel: String, Codable, CaseIterable, Identifiable {
         case .cefrC2:    return .cefrC1
         case .ielts:     return .cefrB2
         case .toefl:     return .cefrB2
+        }
+    }
+
+    /// Grade number used for textbook code generation.
+    var gradeNumber: Int? {
+        switch self {
+        case .primary1:  return 1
+        case .primary2:  return 2
+        case .primary3:  return 3
+        case .primary4:  return 4
+        case .primary5:  return 5
+        case .primary6:  return 6
+        case .junior1:   return 7
+        case .junior2:   return 8
+        case .junior3:   return 9
+        case .senior1:   return 10
+        case .senior2:   return 11
+        case .senior3:   return 12
+        default:         return nil
         }
     }
 }
@@ -204,21 +244,18 @@ enum LevelGroup: String, CaseIterable, Identifiable {
 // MARK: - Textbook
 
 enum TextbookOption: String, Codable, CaseIterable, Identifiable {
-    case primaryRenjiao = "小学·人教版"
-    case primaryForeignResearch = "小学·外研版"
+    case primaryPEP = "小学·人教版"
+    case primaryFLTRP = "小学·外研版"
     case primaryYilin = "小学·译林版"
-    case primaryShanghai = "小学·沪教版"
-    case primaryOxford = "小学·牛津版"
-    case juniorRenjiao = "初中·人教版"
-    case juniorForeignResearch = "初中·外研版"
+    case primaryHujiao = "小学·沪教版"
+    case juniorPEP = "初中·人教版"
+    case juniorFLTRP = "初中·外研版"
     case juniorYilin = "初中·译林版"
-    case juniorShanghai = "初中·沪教版"
-    case juniorOxford = "初中·牛津版"
-    case seniorRenjiao = "高中·人教版"
-    case seniorForeignResearch = "高中·外研版"
+    case juniorHujiao = "初中·沪教版"
+    case seniorPEP = "高中·人教版"
+    case seniorFLTRP = "高中·外研版"
     case seniorYilin = "高中·译林版"
-    case seniorShanghai = "高中·沪教版"
-    case seniorOxford = "高中·牛津版"
+    case seniorHujiao = "高中·沪教版"
     case collegeCet = "大学英语（四级/六级）"
     case graduateExam = "考研英语"
     case preschoolPhonics = "启蒙/自然拼读"
@@ -232,9 +269,9 @@ enum TextbookOption: String, Codable, CaseIterable, Identifiable {
 
     var group: TextbookGroup {
         switch self {
-        case .primaryRenjiao, .primaryForeignResearch, .primaryYilin, .primaryShanghai, .primaryOxford,
-             .juniorRenjiao, .juniorForeignResearch, .juniorYilin, .juniorShanghai, .juniorOxford,
-             .seniorRenjiao, .seniorForeignResearch, .seniorYilin, .seniorShanghai, .seniorOxford,
+        case .primaryPEP, .primaryFLTRP, .primaryYilin, .primaryHujiao,
+             .juniorPEP, .juniorFLTRP, .juniorYilin, .juniorHujiao,
+             .seniorPEP, .seniorFLTRP, .seniorYilin, .seniorHujiao,
              .collegeCet, .graduateExam, .preschoolPhonics:
             return .gradeSync
         case .cefr:
@@ -248,21 +285,18 @@ enum TextbookOption: String, Codable, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .primaryRenjiao:        return "小学主流版本"
-        case .primaryForeignResearch:return "小学主流版本"
+        case .primaryPEP:            return "小学主流版本"
+        case .primaryFLTRP:          return "小学主流版本"
         case .primaryYilin:          return "小学主流版本"
-        case .primaryShanghai:       return "小学主流版本"
-        case .primaryOxford:         return "小学主流版本"
-        case .juniorRenjiao:         return "初中主流版本"
-        case .juniorForeignResearch: return "初中主流版本"
+        case .primaryHujiao:         return "小学主流版本"
+        case .juniorPEP:             return "初中主流版本"
+        case .juniorFLTRP:           return "初中主流版本"
         case .juniorYilin:           return "初中主流版本"
-        case .juniorShanghai:        return "初中主流版本"
-        case .juniorOxford:          return "初中主流版本"
-        case .seniorRenjiao:         return "高中主流版本"
-        case .seniorForeignResearch: return "高中主流版本"
+        case .juniorHujiao:          return "初中主流版本"
+        case .seniorPEP:             return "高中主流版本"
+        case .seniorFLTRP:           return "高中主流版本"
         case .seniorYilin:           return "高中主流版本"
-        case .seniorShanghai:        return "高中主流版本"
-        case .seniorOxford:          return "高中主流版本"
+        case .seniorHujiao:          return "高中主流版本"
         case .collegeCet:        return "大学英语体系"
         case .graduateExam:      return "考研词汇与阅读"
         case .preschoolPhonics:  return "启蒙与发音基础"
@@ -276,12 +310,12 @@ enum TextbookOption: String, Codable, CaseIterable, Identifiable {
 
     static func recommended(for level: UserLevel) -> TextbookOption {
         switch level {
-        case .primary:
-            return .primaryRenjiao
+        case .primary1, .primary2, .primary3, .primary4, .primary5, .primary6:
+            return .primaryPEP
         case .junior1, .junior2, .junior3:
-            return .juniorRenjiao
+            return .juniorPEP
         case .senior1, .senior2, .senior3:
-            return .seniorRenjiao
+            return .seniorPEP
         case .cet4, .cet6:
             return .collegeCet
         case .graduate:
@@ -301,12 +335,12 @@ enum TextbookOption: String, Codable, CaseIterable, Identifiable {
 
     static func options(for level: UserLevel) -> [TextbookOption] {
         switch level {
-        case .primary:
-            return [.primaryRenjiao, .primaryForeignResearch, .primaryYilin, .primaryShanghai, .primaryOxford]
+        case .primary1, .primary2, .primary3, .primary4, .primary5, .primary6:
+            return [.primaryPEP, .primaryFLTRP, .primaryYilin, .primaryHujiao]
         case .junior1, .junior2, .junior3:
-            return [.juniorRenjiao, .juniorForeignResearch, .juniorYilin, .juniorShanghai, .juniorOxford]
+            return [.juniorPEP, .juniorFLTRP, .juniorYilin, .juniorHujiao]
         case .senior1, .senior2, .senior3:
-            return [.seniorRenjiao, .seniorForeignResearch, .seniorYilin, .seniorShanghai, .seniorOxford]
+            return [.seniorPEP, .seniorFLTRP, .seniorYilin, .seniorHujiao]
         case .cet4, .cet6:
             return [.collegeCet]
         case .graduate:
@@ -321,6 +355,57 @@ enum TextbookOption: String, Codable, CaseIterable, Identifiable {
             return [.ielts]
         case .toefl:
             return [.toefl]
+        }
+    }
+
+    /// Base identifier used by the query code.
+    var seriesCode: String {
+        switch self {
+        case .primaryPEP:            return "primaryPEP"
+        case .primaryFLTRP:          return "primaryFLTRP"
+        case .primaryYilin:          return "primaryYilin"
+        case .primaryHujiao:         return "primaryHujiao"
+        case .juniorPEP:             return "juniorPEP"
+        case .juniorFLTRP:           return "juniorFLTRP"
+        case .juniorYilin:           return "juniorYilin"
+        case .juniorHujiao:          return "juniorHujiao"
+        case .seniorPEP:             return "seniorPEP"
+        case .seniorFLTRP:           return "seniorFLTRP"
+        case .seniorYilin:           return "seniorYilin"
+        case .seniorHujiao:          return "seniorHujiao"
+        case .collegeCet:            return "collegeCet"
+        case .graduateExam:          return "graduateExam"
+        case .preschoolPhonics:      return "preschoolPhonics"
+        case .cefr:                  return "cefr"
+        case .cambridge:             return "cambridge"
+        case .longman:               return "longman"
+        case .ielts:                 return "ielts"
+        case .toefl:                 return "toefl"
+        }
+    }
+
+    /// Full textbook query code, e.g. juniorPEP-7a.
+    func code(for level: UserLevel, term: Semester) -> String? {
+        guard group == .gradeSync else {
+            return seriesCode
+        }
+        guard let grade = level.gradeNumber else {
+            return seriesCode
+        }
+        return "\(seriesCode)-\(grade)\(term.rawValue)"
+    }
+}
+
+enum Semester: String, Codable, CaseIterable, Identifiable {
+    case first = "a"
+    case second = "b"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .first:  return "上"
+        case .second: return "下"
         }
     }
 }

@@ -239,18 +239,24 @@ struct LevelSelectView: View {
                         }
                     }
                 }
-
-                Button(action: onContinue) {
-                    Text("进入测试")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(selectedLevel == nil ? Color.gray.opacity(0.4) : Color.blue)
-                        .cornerRadius(14)
-                }
-                .disabled(selectedLevel == nil)
             }
+            .padding(.bottom, 80)
+        }
+        .safeAreaInset(edge: .bottom) {
+            Button(action: onContinue) {
+                Text("进入测试")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(selectedLevel == nil ? Color.gray.opacity(0.4) : Color.blue)
+                    .cornerRadius(14)
+            }
+            .disabled(selectedLevel == nil)
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+            .background(.thinMaterial)
         }
     }
 }
@@ -290,18 +296,24 @@ struct TextbookSelectView: View {
                         }
                     }
                 }
-
-                Button(action: onContinue) {
-                    Text("进入测试")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(selectedTextbook == nil ? Color.gray.opacity(0.4) : Color.blue)
-                        .cornerRadius(14)
-                }
-                .disabled(selectedTextbook == nil)
             }
+            .padding(.bottom, 80)
+        }
+        .safeAreaInset(edge: .bottom) {
+            Button(action: onContinue) {
+                Text("进入测试")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(selectedTextbook == nil ? Color.gray.opacity(0.4) : Color.blue)
+                    .cornerRadius(14)
+            }
+            .disabled(selectedTextbook == nil)
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+            .background(.thinMaterial)
         }
     }
 }
