@@ -10,30 +10,21 @@ import SwiftUI
 struct ContentView: View {
     var body: some View {
         TabView {
+            // Tab 1: 首页（今日推荐 + 专项训练）
+            HomeView()
+                .tabItem {
+                    Image(systemName: "house.fill")
+                    Text("首页")
+                }
+            
+            // Tab 2: 查词（词典/例句/发音/收藏）
             DictionaryView()
                 .tabItem {
                     Image(systemName: "magnifyingglass")
                     Text("查词")
                 }
             
-            WordbookView()
-                .tabItem {
-                    Image(systemName: "book.fill")
-                    Text("生词本")
-                }
-            
-            ScenarioView()
-                .tabItem {
-                    Image(systemName: "mic.fill")
-                    Text("对话")
-                }
-            
-            WritingView()
-                .tabItem {
-                    Image(systemName: "pencil")
-                    Text("写作")
-                }
-            
+            // Tab 3: 我的（进度/错题/成就/设置）
             ProfileView()
                 .tabItem {
                     Image(systemName: "person.fill")

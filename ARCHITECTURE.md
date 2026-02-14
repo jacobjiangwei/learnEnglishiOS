@@ -179,3 +179,37 @@ Question Gen/Writing Feedback]
 - Hosting: migrate or replicate backend in China region
 - AI: switch to compliant domestic providers
 - Payments: add WeChat/Alipay for non-iOS channels
+
+---
+
+## 7. Home Screen IA and Tabs (Plan B)
+
+### 7.1 Home Screen Information Architecture (Top to Bottom)
+
+1. Header
+  - Current level/grade
+  - Short daily goal line
+2. Today Recommendation Package (Primary Card)
+  - Total questions, estimated time, type mix
+  - Primary CTA: start today package
+  - Secondary CTA: view type breakdown
+3. Special Training Groups (Scrollable)
+  - Question types: MCQ, cloze, reading, translation, rewriting, error fix, ordering
+  - Skills: listening, speaking, writing, vocabulary, grammar
+  - Scenarios: campus, travel, workplace, daily life
+  - Lightweight: 5-min sprint, error review, timed challenge
+4. Review and Weakness
+  - Today error review
+  - Recent weak types
+5. Lightweight Progress
+  - Weekly questions done
+  - Streak
+
+### 7.2 Tab Structure (Plan B)
+
+1. Home
+  - Today recommendation package + special training
+2. Dictionary
+  - Word lookup, examples, pronunciation, favorites
+3. Me
+  - Progress, error bank, achievements, settings
