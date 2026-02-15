@@ -10,7 +10,26 @@ import Foundation
 // MARK: - 网络服务
 class NetworkService {
     static let shared = NetworkService()
-    private init() {}
+    private let session: URLSession
+    private let baseURL = "https://api.volingo.app" // TODO: 替换为实际域名
+    
+    private init() {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        self.session = URLSession(configuration: config)
+    }
+    
+    /// 构建带 X-Device-Id 公共 Header 的 URLRequest
+    func makeRequest(path: String, method: String = "GET", body: Data? = nil) -> URLRequest {
+        var request = URLRequest(url: URL(string: baseURL + path)!)
+        request.httpMethod = method
+        request.setValue(DeviceIdManager.shared.deviceId, forHTTPHeaderField: "X-Device-Id")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let body = body {
+            request.httpBody = body
+        }
+        return request
+    }
     
     // TODO: 实现网络请求逻辑
     func analyzeWriting(_ text: String) async throws -> [WritingFeedback] {
