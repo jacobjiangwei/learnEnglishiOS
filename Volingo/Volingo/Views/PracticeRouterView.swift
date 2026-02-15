@@ -12,6 +12,15 @@ struct PracticeRouterView: View {
     let questionType: QuestionType
 
     var body: some View {
+        practiceView
+            .onAppear {
+                AnalyticsService.shared.trackPracticeStarted(questionType: questionType.rawValue, textbookCode: "")
+                AnalyticsService.shared.trackScreenView("Practice_\(questionType.rawValue)")
+            }
+    }
+    
+    @ViewBuilder
+    private var practiceView: some View {
         switch questionType {
         // 题型类
         case .multipleChoice:

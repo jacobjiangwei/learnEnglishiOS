@@ -46,6 +46,10 @@ struct TodaySessionView: View {
         }
         .navigationTitle("今日推荐")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            AnalyticsService.shared.trackScreenView("TodaySessionView")
+            AnalyticsService.shared.trackTodayPackageStarted(textbookCode: "")
+        }
     }
 }
 

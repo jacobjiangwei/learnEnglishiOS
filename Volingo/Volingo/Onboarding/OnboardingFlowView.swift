@@ -34,11 +34,16 @@ struct OnboardingFlowView: View {
 
                     switch step {
                     case .welcome:
-                        OnboardingWelcomeView { step = .levelSelect }
+                        OnboardingWelcomeView {
+                            AnalyticsService.shared.trackOnboardingStep("welcome")
+                            step = .levelSelect
+                        }
                     case .levelSelect:
                         LevelSelectView(selectedLevel: $selectedLevel) {
                             if let selectedLevel {
                                 store.updateSelectedLevel(selectedLevel)
+                                AnalyticsService.shared.trackOnboardingStep("levelSelect")
+                                AnalyticsService.shared.trackOnboardingLevelSelected(selectedLevel.rawValue)
                                 selectedTextbook = TextbookOption.recommended(for: selectedLevel)
                                 attemptId = UUID()
                                 step = .textbookSelect
@@ -50,7 +55,10 @@ struct OnboardingFlowView: View {
                             recommendedTextbook: selectedLevel.map { TextbookOption.recommended(for: $0) },
                             onContinue: {
                             if let selectedTextbook, let selectedLevel {
+                                AnalyticsService.shared.trackOnboardingStep("textbookSelect")
+                                AnalyticsService.shared.trackOnboardingTextbookSelected(selectedTextbook.rawValue)
                                 if store.onboardingSkipTest {
+                                    AnalyticsService.shared.trackOnboardingCompleted()
                                     store.completeOnboardingWithoutTest(selectedLevel: selectedLevel, textbook: selectedTextbook)
                                 } else {
                                     store.updateSelectedTextbook(selectedTextbook)
@@ -66,6 +74,7 @@ struct OnboardingFlowView: View {
                             LevelTestView(level: selectedLevel, attemptId: attemptId) { score, recommended in
                                 testScore = score
                                 confirmedLevel = recommended
+                                AnalyticsService.shared.trackOnboardingTestCompleted(score: score, recommendedLevel: recommended.rawValue)
                                 step = .result
                             }
                         }
@@ -76,6 +85,8 @@ struct OnboardingFlowView: View {
                             score: testScore,
                             onConfirm: {
                                 if let confirmedLevel {
+                                    AnalyticsService.shared.trackOnboardingCompleted()
+                                    AnalyticsService.shared.setUserLevel(confirmedLevel.rawValue)
                                     store.completeOnboarding(testScore: testScore, confirmedLevel: confirmedLevel)
                                 }
                             },

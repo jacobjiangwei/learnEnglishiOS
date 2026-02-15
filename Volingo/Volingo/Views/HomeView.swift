@@ -40,6 +40,9 @@ struct HomeView: View {
             }
             .navigationTitle("首页")
             .background(Color(.systemGroupedBackground))
+            .onAppear {
+                AnalyticsService.shared.trackScreenView("HomeView")
+            }
         }
     }
     

@@ -20,6 +20,9 @@ struct RootView: View {
                     .environmentObject(store)
             }
         }
+        .onAppear {
+            AnalyticsService.shared.trackAppLaunch(isReturningUser: store.userState.isOnboardingCompleted)
+        }
     }
 }
 
