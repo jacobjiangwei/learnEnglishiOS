@@ -43,4 +43,5 @@ jobs:
           az containerapp update \
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --image ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            --image ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --set-env-vars "ConnectionStrings__cosmos=${{ secrets.COSMOS_CONNECTION_STRING }}"

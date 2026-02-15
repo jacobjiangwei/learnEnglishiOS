@@ -1,14 +1,32 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Volingo.Api.Models;
-using Volingo.Api.Services;
+using Microsoft.Azure.Cosmos;
+using Scalar.AspNetCore;
+using Volingo.Api.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add Aspire service defaults (health checks, telemetry, resilience)
+// Aspire service defaults (health checks, telemetry, resilience)
 builder.AddServiceDefaults();
 
-// Configure JSON serialization
+// Cosmos DB — manual registration (emulator uses Gateway mode)
+var cosmosConnectionString = builder.Configuration.GetConnectionString("cosmos");
+var databaseName = builder.Configuration["CosmosDb:DatabaseName"] ?? "volingo";
+
+if (!string.IsNullOrEmpty(cosmosConnectionString))
+{
+    var isLocal = cosmosConnectionString.Contains("localhost");
+    builder.Services.AddSingleton(_ => new CosmosClient(cosmosConnectionString, new CosmosClientOptions
+    {
+        SerializerOptions = new CosmosSerializationOptions
+        {
+            PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase
+        },
+        ConnectionMode = isLocal ? ConnectionMode.Gateway : ConnectionMode.Direct
+    }));
+}
+
+// JSON serialization
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
@@ -16,119 +34,57 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 
 builder.Services.AddOpenApi();
-builder.Services.AddSingleton<QuestionService>();
 
 var app = builder.Build();
-
-// Aspire health/alive endpoints
 app.MapDefaultEndpoints();
 
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapScalarApiReference(options =>
+    {
+        options.WithTitle("Volingo API")
+               .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
+    });
 }
 
-// ── Middleware: Extract X-Device-Id ──
-app.Use(async (context, next) =>
+// Initialize Cosmos DB: create database & containers if not exist
+if (!string.IsNullOrEmpty(cosmosConnectionString))
 {
-    var path = context.Request.Path.Value ?? "";
-    if (path.StartsWith("/health") || path.StartsWith("/alive") || path.StartsWith("/openapi"))
-    {
-        await next();
-        return;
-    }
-
-    if (path.StartsWith("/api/"))
-    {
-        var deviceId = context.Request.Headers["X-Device-Id"].FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(deviceId))
-        {
-            context.Response.StatusCode = 400;
-            context.Response.ContentType = "application/json";
-            await context.Response.WriteAsJsonAsync(ApiResponse.Error(400, "Missing X-Device-Id header"));
-            return;
-        }
-        context.Items["DeviceId"] = deviceId;
-    }
-
-    await next();
-});
+    await app.InitializeCosmosDbAsync(databaseName);
+}
 
 // ── Root ──
 app.MapGet("/", () => Results.Ok(new { service = "Volingo API", version = "1.0.0", status = "running" }));
 
-// ── 3.1 Practice Questions ──
-app.MapGet("/api/v1/practice/questions", (string type, string textbookCode, int? count, QuestionService svc) =>
+// ── Cosmos DB status ──
+app.MapGet("/api/v1/db/status", async (CosmosClient cosmos) =>
 {
-    var n = count ?? 5;
-
-    if (type == "reading")
+    try
     {
-        var passages = svc.GetReadingQuestions(textbookCode, n);
-        return Results.Ok(ApiResponse.Success(new
+        var db = cosmos.GetDatabase(databaseName);
+        await db.ReadAsync();
+
+        var containers = new List<string>();
+        using var iterator = db.GetContainerQueryIterator<ContainerProperties>();
+        while (iterator.HasMoreResults)
         {
-            questionType = type,
-            textbookCode,
-            passages
-        }));
+            var response = await iterator.ReadNextAsync();
+            containers.AddRange(response.Select(c => c.Id));
+        }
+
+        return Results.Ok(new
+        {
+            status = "connected",
+            database = databaseName,
+            endpoint = cosmos.Endpoint.ToString(),
+            containers
+        });
     }
-
-    var questions = svc.GetQuestionsByType(type, textbookCode, n);
-    return Results.Ok(ApiResponse.Success(new
+    catch (Exception ex)
     {
-        questionType = type,
-        textbookCode,
-        questions
-    }));
-});
-
-// ── 3.2 Today Package ──
-app.MapGet("/api/v1/practice/today-package", (string textbookCode, QuestionService svc) =>
-{
-    var package = svc.GetTodayPackage(textbookCode);
-    return Results.Ok(ApiResponse.Success(package));
-});
-
-// ── 3.3 Home Progress ──
-app.MapGet("/api/v1/user/home-progress", (HttpContext ctx, QuestionService svc) =>
-{
-    var deviceId = ctx.Items["DeviceId"]?.ToString() ?? "";
-    var progress = svc.GetHomeProgress(deviceId);
-    return Results.Ok(ApiResponse.Success(progress));
-});
-
-// ── 4.1 Submit Answer ──
-app.MapPost("/api/v1/practice/submit", (SubmitAnswerRequest req) =>
-{
-    var response = new SubmitAnswerResponse
-    {
-        Correct = true,
-        Score = 100,
-        Feedback = "回答正确！",
-        CorrectAnswer = new Dictionary<string, object> { ["selectedIndex"] = 1 }
-    };
-    return Results.Ok(ApiResponse.Success(response));
-});
-
-// ── 4.2 Report Question ──
-app.MapPost("/api/v1/practice/report", (ReportRequest req) =>
-{
-    var response = new ReportResponse
-    {
-        ReportId = $"rpt-{Guid.NewGuid()}"
-    };
-    return Results.Ok(ApiResponse.Success(response));
-});
-
-// ── 0.2 Merge Device ──
-app.MapPost("/api/v1/auth/merge-device", (MergeDeviceRequest req) =>
-{
-    var response = new MergeDeviceResponse
-    {
-        MergedRecords = 0,
-        Message = "设备数据已合并到您的账号"
-    };
-    return Results.Ok(ApiResponse.Success(response));
+        return Results.Json(new { status = "error", message = ex.Message }, statusCode: 500);
+    }
 });
 
 app.Run();
