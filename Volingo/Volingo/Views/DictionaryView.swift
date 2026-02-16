@@ -83,6 +83,7 @@ struct DictionaryView: View {
             }
             .navigationTitle("查词")
         }
+        .navigationViewStyle(.stack)
         .sheet(isPresented: $showingWordDetail) {
             if let word = viewModel.selectedWord {
                 WordDetailView(word: word)
@@ -302,6 +303,7 @@ struct WordDetailView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
     }
     
     private func hasWordForms(_ exchange: WordExchange) -> Bool {

@@ -107,6 +107,7 @@ struct HomeView: View {
                 vm.load(textbookCode: textbookCode, force: true)
             }
         }
+        .navigationViewStyle(.stack)
     }
 
     // MARK: - 顶部状态

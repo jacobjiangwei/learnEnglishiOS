@@ -65,12 +65,31 @@ struct ProfileView: View {
 
                 // MARK: 各题型统计
                 Section(header: Text("题型统计")) {
+                    // 表头
+                    HStack {
+                        Text("题型")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("做题数")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(width: 60, alignment: .trailing)
+                        Text("正确率")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(width: 60, alignment: .trailing)
+                    }
                     ForEach(allQuestionTypeStats) { stat in
                         HStack {
                             Text(questionTypeDisplayName(stat.questionType))
                             Spacer()
-                            Text("\(stat.total) 题 · \(String(format: "%.0f%%", stat.accuracy))")
+                            Text(stat.total > 0 ? "\(stat.total)" : "--")
                                 .foregroundColor(.secondary)
+                                .frame(width: 60, alignment: .trailing)
+                            Text(stat.total > 0 ? String(format: "%.0f%%", stat.accuracy) : "--")
+                                .foregroundColor(.secondary)
+                                .frame(width: 60, alignment: .trailing)
                         }
                     }
                 }
@@ -161,6 +180,7 @@ struct ProfileView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
     }
 
     // MARK: - Helpers

@@ -22,6 +22,7 @@ struct ScenarioView: View {
             }
             .navigationTitle("情景对话")
         }
+        .navigationViewStyle(.stack)
     }
 }
 

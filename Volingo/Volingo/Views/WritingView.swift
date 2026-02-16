@@ -22,6 +22,7 @@ struct WritingView: View {
             }
             .navigationTitle("写作训练")
         }
+        .navigationViewStyle(.stack)
     }
 }
 

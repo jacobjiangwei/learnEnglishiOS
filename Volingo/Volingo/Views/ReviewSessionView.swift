@@ -112,6 +112,7 @@ struct ReviewSessionView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
         .onAppear {
             // 不在这里自动开始，等待用户选择难度
         }

@@ -112,6 +112,7 @@ struct WordbookView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
         .sheet(isPresented: $viewModel.showingWordDetail) {
             if let savedWord = viewModel.selectedWord {
                 SavedWordDetailView(savedWord: savedWord)
@@ -417,6 +418,7 @@ struct SavedWordDetailView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
     }
 }
 
@@ -571,6 +573,7 @@ struct LearningStatsView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
     }
 }
 
