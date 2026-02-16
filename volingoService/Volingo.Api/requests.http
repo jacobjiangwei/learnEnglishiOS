@@ -1,4 +1,6 @@
 @host = http://localhost:5174
+# 切换到生产环境测试：注释上面一行，取消注释下面一行
+# @host = https://volingo-api.thankfulbay-ca126ab1.eastasia.azurecontainerapps.io
 @deviceId = test-device-001
 @textbookCode = juniorPEP-7a
 
@@ -43,6 +45,14 @@ X-Device-Id: {{deviceId}}
 
 ### 1j. 获取练习题目 — 语法
 GET {{host}}/api/v1/practice/questions?questionType=grammar&textbookCode={{textbookCode}}&count=3
+X-Device-Id: {{deviceId}}
+
+### 1k. 获取练习题目 — 口语
+GET {{host}}/api/v1/practice/questions?questionType=speaking&textbookCode={{textbookCode}}&count=3
+X-Device-Id: {{deviceId}}
+
+### 1l. 获取练习题目 — 写作
+GET {{host}}/api/v1/practice/questions?questionType=writing&textbookCode={{textbookCode}}&count=3
 X-Device-Id: {{deviceId}}
 
 ### ──────────────────────────────────────

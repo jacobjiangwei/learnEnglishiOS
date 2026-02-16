@@ -14,9 +14,11 @@ class NetworkService {
     private let session: URLSession
 
     #if DEBUG
-    private let baseURL = "http://localhost:5174"
+    private let baseURL: String = ProcessInfo.processInfo.environment["USE_PROD_API"] == "1"
+        ? "https://volingo-api.thankfulbay-ca126ab1.eastasia.azurecontainerapps.io"
+        : "http://localhost:5174"
     #else
-    private let baseURL = "https://api.volingo.app"
+    private let baseURL = "https://volingo-api.thankfulbay-ca126ab1.eastasia.azurecontainerapps.io"
     #endif
 
     private init() {

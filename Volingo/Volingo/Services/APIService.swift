@@ -34,11 +34,23 @@ enum APIServiceError: Error, LocalizedError {
 final class APIService {
     static let shared = APIService()
 
-    #if DEBUG
-    private let baseURL = "http://localhost:5174"
-    #else
-    private let baseURL = "https://api.volingo.app"
-    #endif
+    private static let prodURL = "https://volingo-api.thankfulbay-ca126ab1.eastasia.azurecontainerapps.io"
+    private static let devURL = "http://localhost:5174"
+
+    /// 后端地址：
+    /// - Volingo-Prod scheme → 环境变量 USE_PROD_API=1 → 生产地址（可断点调试）
+    /// - Volingo scheme (Debug) → localhost
+    /// - Release (Archive/TestFlight) → 生产地址
+    private let baseURL: String = {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["USE_PROD_API"] == "1" {
+            return prodURL
+        }
+        return devURL
+        #else
+        return prodURL
+        #endif
+    }()
 
     private let session: URLSession
     private let decoder: JSONDecoder
@@ -70,23 +82,23 @@ final class APIService {
 
     /// 发起请求并解码 JSON 响应
     private func fetch<T: Decodable>(_ type: T.Type, request: URLRequest) async throws -> T {
-        logRequest(request)
+        let start = CFAbsoluteTimeGetCurrent()
 
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            print("[API] ❌ 网络异常: \(error)")
+            logRoundTrip(request: request, error: error, duration: CFAbsoluteTimeGetCurrent() - start)
             throw APIServiceError.networkError(error)
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            print("[API] ❌ 响应不是 HTTPURLResponse")
+            logRoundTrip(request: request, error: URLError(.badServerResponse), duration: CFAbsoluteTimeGetCurrent() - start)
             throw APIServiceError.networkError(URLError(.badServerResponse))
         }
 
-        logResponse(httpResponse, data: data)
+        logRoundTrip(request: request, response: httpResponse, data: data, duration: CFAbsoluteTimeGetCurrent() - start)
 
         guard (200...299).contains(httpResponse.statusCode) else {
             let message = (try? decoder.decode(APIError.self, from: data))?.error
@@ -96,30 +108,32 @@ final class APIService {
         do {
             return try decoder.decode(type, from: data)
         } catch {
+            #if DEBUG
             print("[API] ❌ 解码失败(\(T.self)): \(error)")
+            #endif
             throw APIServiceError.decodingError(error)
         }
     }
 
     /// 发起请求，期望 204 No Content
     private func fetchNoContent(request: URLRequest) async throws {
-        logRequest(request)
+        let start = CFAbsoluteTimeGetCurrent()
 
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            print("[API] ❌ 网络异常: \(error)")
+            logRoundTrip(request: request, error: error, duration: CFAbsoluteTimeGetCurrent() - start)
             throw APIServiceError.networkError(error)
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            print("[API] ❌ 响应不是 HTTPURLResponse")
+            logRoundTrip(request: request, error: URLError(.badServerResponse), duration: CFAbsoluteTimeGetCurrent() - start)
             throw APIServiceError.networkError(URLError(.badServerResponse))
         }
 
-        logResponse(httpResponse, data: data)
+        logRoundTrip(request: request, response: httpResponse, data: data, duration: CFAbsoluteTimeGetCurrent() - start)
 
         guard (200...299).contains(httpResponse.statusCode) else {
             let message = (try? decoder.decode(APIError.self, from: data))?.error
@@ -127,31 +141,45 @@ final class APIService {
         }
     }
 
-    // MARK: - 日志
+    // MARK: - 日志（响应回来后一次性输出）
 
-    private func logRequest(_ request: URLRequest) {
+    private func logRoundTrip(request: URLRequest, response: HTTPURLResponse? = nil, data: Data? = nil, error: Error? = nil, duration: CFAbsoluteTime) {
         #if DEBUG
         let method = request.httpMethod ?? "GET"
-        let url = request.url?.absoluteString ?? "nil"
-        print("[API] ➡️ \(method) \(url)")
-        if let headers = request.allHTTPHeaderFields {
-            print("[API]    Headers: \(headers)")
-        }
-        if let body = request.httpBody, let str = String(data: body, encoding: .utf8) {
-            print("[API]    Body: \(str)")
-        }
-        #endif
-    }
+        let path = request.url?.path ?? ""
+        let query = request.url?.query.map { "?\($0)" } ?? ""
+        let ms = String(format: "%.0fms", duration * 1000)
 
-    private func logResponse(_ response: HTTPURLResponse, data: Data) {
-        #if DEBUG
-        let status = response.statusCode
-        let url = response.url?.absoluteString ?? "nil"
-        let bodyPreview = String(data: data.prefix(2000), encoding: .utf8) ?? "<binary \(data.count) bytes>"
-        let icon = (200...299).contains(status) ? "✅" : "❌"
-        print("[API] \(icon) \(status) \(url)")
-        print("[API]    Response Headers: \(response.allHeaderFields)")
-        print("[API]    Body(\(data.count)B): \(bodyPreview)")
+        var lines: [String] = []
+        lines.append("┌─[API] \(method) \(path)\(query)")
+
+        // Request headers（只打有意义的）
+        if let deviceId = request.value(forHTTPHeaderField: "X-Device-Id") {
+            lines.append("│  ➡️ X-Device-Id: \(deviceId)")
+        }
+
+        // Request body
+        if let body = request.httpBody, let str = String(data: body, encoding: .utf8) {
+            let preview = str.count > 200 ? String(str.prefix(200)) + "…" : str
+            lines.append("│  ➡️ 📦 \(preview)")
+        }
+
+        // Response
+        if let response, let data {
+            let status = response.statusCode
+            let icon = (200...299).contains(status) ? "✅" : "❌"
+            let size = ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
+            let contentType = response.value(forHTTPHeaderField: "Content-Type") ?? ""
+            lines.append("│  ⬅️ \(icon) \(status) · \(size) · \(contentType)")
+        }
+
+        // Error
+        if let error {
+            lines.append("│  ⬅️ ❌ \(error.localizedDescription)")
+        }
+
+        lines.append("└─[\(ms)]")
+        print(lines.joined(separator: "\n"))
         #endif
     }
 
