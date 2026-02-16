@@ -9,8 +9,17 @@ import Foundation
 
 // MARK: - 通用错误
 
+/// 兼容旧格式 {"error":"..."} 和 RFC 7807 ProblemDetails {"title":"...","detail":"...","status":400}
 struct APIError: Codable {
-    let error: String
+    let error: String?       // 旧格式
+    let title: String?       // RFC 7807
+    let detail: String?      // RFC 7807
+    let status: Int?         // RFC 7807
+
+    /// 提取可读错误消息
+    var message: String {
+        detail ?? error ?? title ?? "未知错误"
+    }
 }
 
 // MARK: - 选择题 (multipleChoice)
@@ -20,7 +29,7 @@ struct APIMCQQuestion: Codable, Identifiable {
     let questionType: String
     let textbookCode: String
     let stem: String
-    let translation: String
+    let translation: String?
     let options: [String]
     let correctIndex: Int
     let explanation: String
@@ -34,10 +43,10 @@ struct APIClozeQuestion: Codable, Identifiable {
     let questionType: String
     let textbookCode: String
     let sentence: String
-    let translation: String
+    let translation: String?
     let correctAnswer: String
     let hints: [String]?
-    let explanation: String
+    let explanation: String?
     let explanationTranslation: String?
 }
 
@@ -49,17 +58,17 @@ struct APIReadingPassage: Codable, Identifiable {
     let textbookCode: String
     let title: String
     let content: String
-    let translation: String
+    let translation: String?
     let questions: [APIReadingSubQuestion]
 }
 
 struct APIReadingSubQuestion: Codable, Identifiable {
     let id: String
     let stem: String
-    let translation: String
+    let translation: String?
     let options: [String]
     let correctIndex: Int
-    let explanation: String
+    let explanation: String?
 }
 
 // MARK: - 翻译题 (translation)
@@ -99,7 +108,7 @@ struct APIErrorCorrectionQuestion: Codable, Identifiable {
     let questionType: String
     let textbookCode: String
     let sentence: String
-    let translation: String
+    let translation: String?
     let errorRange: String
     let correction: String
     let explanation: String?
@@ -115,7 +124,7 @@ struct APIOrderingQuestion: Codable, Identifiable {
     let shuffledParts: [String]
     let correctOrder: [Int]
     let correctSentence: String?
-    let translation: String
+    let translation: String?
     let explanation: String?
     let explanationTranslation: String?
 }
@@ -145,7 +154,7 @@ struct APISpeakingQuestion: Codable, Identifiable {
     let textbookCode: String
     let prompt: String
     let referenceText: String
-    let translation: String
+    let translation: String?
     let category: String
 }
 
@@ -174,11 +183,11 @@ struct APIVocabularyQuestion: Codable, Identifiable {
     let id: String
     let questionType: String
     let textbookCode: String
-    let word: String
+    let word: String?
     let phonetic: String?
     let meaning: String?
     let stem: String
-    let translation: String
+    let translation: String?
     let options: [String]
     let correctIndex: Int
     let exampleSentence: String?
@@ -195,7 +204,7 @@ struct APIGrammarQuestion: Codable, Identifiable {
     let questionType: String
     let textbookCode: String
     let stem: String
-    let translation: String
+    let translation: String?
     let options: [String]
     let correctIndex: Int
     let grammarPoint: String?
@@ -231,16 +240,16 @@ struct APIDialogueLine: Codable {
 struct QuestionsResponse<T: Codable>: Codable {
     let questionType: String
     let textbookCode: String
-    let remaining: Int
+    let remaining: Int?
     let questions: T
 }
 
 /// 阅读理解专用响应（passages 而非 questions）
 struct ReadingQuestionsResponse: Codable {
-    let questionType: String
-    let textbookCode: String
+    let questionType: String?
+    let textbookCode: String?
     let remaining: Int?
-    let passages: [APIReadingPassage]
+    let passages: [APIReadingPassage]?
 }
 
 // MARK: - 今日推荐套餐响应

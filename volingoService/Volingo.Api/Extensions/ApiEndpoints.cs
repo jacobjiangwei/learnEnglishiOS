@@ -9,36 +9,39 @@ namespace Volingo.Api.Extensions;
 /// </summary>
 public static class ApiEndpoints
 {
-    private static readonly ErrorResponse MissingDeviceId = new("Missing X-Device-Id header");
-
     public static WebApplication MapVolingoEndpoints(this WebApplication app)
     {
+
         // ── 3.1 获取练习题组 ──
-        app.MapGet("/api/v1/practice/questions", (HttpContext ctx, MockDataService mock,
+        app.MapGet("/api/v1/practice/questions", async (HttpContext ctx,
+            IQuestionService questions, ISubmitResultService submits,
             string questionType, string textbookCode, int? count) =>
         {
             var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return Results.Json(MissingDeviceId, statusCode: 400);
+            if (deviceId is null) return MissingDeviceIdResult();
 
-            var (questions, remaining) = mock.GetQuestions(deviceId, textbookCode, questionType, count ?? 5);
+            var completedIds = await submits.GetCompletedIdsAsync(deviceId);
+            var (questionList, remaining) = await questions.GetQuestionsAsync(
+                textbookCode, questionType, count ?? 5, completedIds);
 
-            // 阅读理解用 passages 而非 questions（文档 §3.1）
             if (questionType == "reading")
-                return Results.Ok(new ReadingQuestionsResponse(questionType, textbookCode, remaining, questions));
+                return Results.Ok(new ReadingQuestionsResponse(questionType, textbookCode, remaining, questionList));
 
-            return Results.Ok(new QuestionsResponse(questionType, textbookCode, remaining, questions));
+            return Results.Ok(new QuestionsResponse(questionType, textbookCode, remaining, questionList));
         })
         .WithName("GetQuestions")
         .WithTags("Practice");
 
         // ── 3.2 今日推荐套餐 ──
-        app.MapGet("/api/v1/practice/today-package", (HttpContext ctx, MockDataService mock,
+        app.MapGet("/api/v1/practice/today-package", async (HttpContext ctx,
+            IQuestionService questions, ISubmitResultService submits,
             string textbookCode) =>
         {
             var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return Results.Json(MissingDeviceId, statusCode: 400);
+            if (deviceId is null) return MissingDeviceIdResult();
 
-            var package = mock.GetTodayPackage(deviceId, textbookCode);
+            var completedIds = await submits.GetCompletedIdsAsync(deviceId);
+            var package = await questions.GetTodayPackageAsync(textbookCode, completedIds);
 
             return Results.Ok(package);
         })
@@ -46,65 +49,62 @@ public static class ApiEndpoints
         .WithTags("Practice");
 
         // ── 3.3 学习统计 ──
-        app.MapGet("/api/v1/user/stats", (HttpContext ctx, MockDataService mock, int? days) =>
+        app.MapGet("/api/v1/user/stats", async (HttpContext ctx, ISubmitResultService submitService, int? days) =>
         {
             var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return Results.Json(MissingDeviceId, statusCode: 400);
+            if (deviceId is null) return MissingDeviceIdResult();
 
-            var stats = mock.GetStats(deviceId, days ?? 365);
-
+            var stats = await submitService.GetStatsAsync(deviceId, days ?? 365);
             return Results.Ok(stats);
         })
         .WithName("GetUserStats")
         .WithTags("User");
 
         // ── 4.1 提交答案（批量） ──
-        app.MapPost("/api/v1/practice/submit", (HttpContext ctx, MockDataService mock, SubmitRequest request) =>
+        app.MapPost("/api/v1/practice/submit", async (HttpContext ctx,
+            ISubmitResultService submitService, SubmitRequest request) =>
         {
             var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return Results.Json(MissingDeviceId, statusCode: 400);
+            if (deviceId is null) return MissingDeviceIdResult();
 
-            mock.Submit(deviceId, request);
-
+            await submitService.SubmitAsync(deviceId, request);
             return Results.NoContent();
         })
         .WithName("SubmitAnswer")
         .WithTags("Practice");
 
         // ── 4.2 投诉错误题目 ──
-        app.MapPost("/api/v1/practice/report", (HttpContext ctx, MockDataService mock, ReportRequest request) =>
+        app.MapPost("/api/v1/practice/report", async (HttpContext ctx, IReportService reports, ReportRequest request) =>
         {
             var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return Results.Json(MissingDeviceId, statusCode: 400);
+            if (deviceId is null) return MissingDeviceIdResult();
 
-            var reportId = mock.Report(deviceId, request);
-
+            var reportId = await reports.ReportAsync(deviceId, request);
             return Results.Ok(new ReportResponse(reportId));
         })
         .WithName("ReportQuestion")
         .WithTags("Practice");
 
         // ── 5.1 添加生词 ──
-        app.MapPost("/api/v1/wordbook/add", (HttpContext ctx, MockDataService mock, WordbookAddRequest request) =>
+        app.MapPost("/api/v1/wordbook/add", async (HttpContext ctx, IWordbookService wordbook, WordbookAddRequest request) =>
         {
             var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return Results.Json(MissingDeviceId, statusCode: 400);
+            if (deviceId is null) return MissingDeviceIdResult();
 
-            var entry = mock.AddWord(deviceId, request);
-
+            var entry = await wordbook.AddWordAsync(deviceId, request);
             return Results.Ok(entry);
         })
         .WithName("AddWord")
         .WithTags("Wordbook");
 
         // ── 5.2 删除生词 ──
-        app.MapDelete("/api/v1/wordbook/{wordId}", (HttpContext ctx, MockDataService mock, string wordId) =>
+        app.MapDelete("/api/v1/wordbook/{wordId}", async (HttpContext ctx, IWordbookService wordbook, string wordId) =>
         {
             var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return Results.Json(MissingDeviceId, statusCode: 400);
+            if (deviceId is null) return MissingDeviceIdResult();
 
-            var deleted = mock.DeleteWord(deviceId, wordId);
-            if (!deleted) return Results.NotFound(new ErrorResponse("Word not found"));
+            var deleted = await wordbook.DeleteWordAsync(deviceId, wordId);
+            if (!deleted) return Results.Problem(detail: "Word not found.", statusCode: 404, title: "Not Found");
 
             return Results.NoContent();
         })
@@ -112,13 +112,12 @@ public static class ApiEndpoints
         .WithTags("Wordbook");
 
         // ── 5.3 获取生词列表（全量） ──
-        app.MapGet("/api/v1/wordbook/list", (HttpContext ctx, MockDataService mock) =>
+        app.MapGet("/api/v1/wordbook/list", async (HttpContext ctx, IWordbookService wordbook) =>
         {
             var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return Results.Json(MissingDeviceId, statusCode: 400);
+            if (deviceId is null) return MissingDeviceIdResult();
 
-            var list = mock.GetWordbook(deviceId);
-
+            var list = await wordbook.GetWordbookAsync(deviceId);
             return Results.Ok(list);
         })
         .WithName("GetWordbook")
@@ -131,4 +130,14 @@ public static class ApiEndpoints
     {
         return ctx.Request.Headers.TryGetValue("X-Device-Id", out var value) ? value.ToString() : null;
     }
+
+    /// <summary>
+    /// Return RFC 7807 Problem Details for missing X-Device-Id.
+    /// Uses Results.Problem() for standardized error format.
+    /// </summary>
+    private static IResult MissingDeviceIdResult() =>
+        Results.Problem(
+            detail: "X-Device-Id header is required.",
+            statusCode: 400,
+            title: "Missing Device ID");
 }

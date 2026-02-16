@@ -108,11 +108,21 @@ class PracticeViewModel: ObservableObject {
 
     // MARK: - 各题型加载
 
+    /// 如果数组为空，显示"暂无题目"而非空白界面
+    private func guardEmpty<T>(_ items: [T]) throws -> [T] {
+        if items.isEmpty { throw EmptyQuestionsError() }
+        return items
+    }
+
+    private struct EmptyQuestionsError: LocalizedError {
+        var errorDescription: String? { "暂无可用题目，请稍后再试" }
+    }
+
     private func loadMCQ(textbookCode: String) async {
         mcqQuestions = .loading
         do {
             let (apiQuestions, _) = try await api.fetchMCQQuestions(textbookCode: textbookCode)
-            let questions = apiQuestions.map { q in
+            let questions = try guardEmpty(apiQuestions).map { q in
                 MCQQuestion(
                     id: q.id,
                     stem: q.stem,
@@ -131,13 +141,13 @@ class PracticeViewModel: ObservableObject {
         clozeQuestions = .loading
         do {
             let (apiQuestions, _) = try await api.fetchClozeQuestions(textbookCode: textbookCode)
-            let questions = apiQuestions.map { q in
+            let questions = try guardEmpty(apiQuestions).map { q in
                 ClozeQuestion(
                     id: q.id,
                     sentence: q.sentence,
                     answer: q.correctAnswer,
                     hint: q.hints?.first,
-                    explanation: q.explanation
+                    explanation: q.explanation ?? ""
                 )
             }
             clozeQuestions = .loaded(questions)
@@ -150,26 +160,26 @@ class PracticeViewModel: ObservableObject {
         readingPassage = .loading
         do {
             let resp = try await api.fetchReadingQuestions(textbookCode: textbookCode)
-            if let first = resp.passages.first {
-                let questions = first.questions.map { q in
-                    ReadingQuestion(
-                        id: q.id,
-                        stem: q.stem,
-                        options: q.options,
-                        correctIndex: q.correctIndex,
-                        explanation: q.explanation
-                    )
-                }
-                let passage = ReadingPassage(
-                    id: first.id,
-                    title: first.title,
-                    content: first.content,
-                    questions: questions
-                )
-                readingPassage = .loaded(passage)
-            } else {
-                readingPassage = .error("没有可用的阅读题")
+            guard let first = resp.passages?.first else {
+                readingPassage = .error("暂无可用的阅读题")
+                return
             }
+            let questions = first.questions.map { q in
+                ReadingQuestion(
+                    id: q.id,
+                    stem: q.stem,
+                    options: q.options,
+                    correctIndex: q.correctIndex,
+                    explanation: q.explanation ?? ""
+                )
+            }
+            let passage = ReadingPassage(
+                id: first.id,
+                title: first.title,
+                content: first.content,
+                questions: questions
+            )
+            readingPassage = .loaded(passage)
         } catch {
             readingPassage = .error(error.localizedDescription)
         }
@@ -179,7 +189,7 @@ class PracticeViewModel: ObservableObject {
         translationItems = .loading
         do {
             let (apiQuestions, _) = try await api.fetchTranslationQuestions(textbookCode: textbookCode)
-            let items = apiQuestions.map { q in
+            let items = try guardEmpty(apiQuestions).map { q in
                 TextInputItem(
                     id: q.id,
                     sourceText: q.sourceText,
@@ -200,7 +210,7 @@ class PracticeViewModel: ObservableObject {
         rewritingItems = .loading
         do {
             let (apiQuestions, _) = try await api.fetchRewritingQuestions(textbookCode: textbookCode)
-            let items = apiQuestions.map { q in
+            let items = try guardEmpty(apiQuestions).map { q in
                 TextInputItem(
                     id: q.id,
                     sourceText: q.originalSentence,
@@ -220,7 +230,7 @@ class PracticeViewModel: ObservableObject {
         writingItems = .loading
         do {
             let (apiQuestions, _) = try await api.fetchWritingQuestions(textbookCode: textbookCode)
-            let items = apiQuestions.map { q in
+            let items = try guardEmpty(apiQuestions).map { q in
                 TextInputItem(
                     id: q.id,
                     sourceText: q.prompt,
@@ -241,7 +251,7 @@ class PracticeViewModel: ObservableObject {
         errorCorrectionQuestions = .loading
         do {
             let (apiQuestions, _) = try await api.fetchErrorCorrectionQuestions(textbookCode: textbookCode)
-            let questions = apiQuestions.map { q in
+            let questions = try guardEmpty(apiQuestions).map { q in
                 ErrorCorrectionQuestion(
                     id: q.id,
                     sentence: q.sentence,
@@ -260,7 +270,7 @@ class PracticeViewModel: ObservableObject {
         orderingQuestions = .loading
         do {
             let (apiQuestions, _) = try await api.fetchOrderingQuestions(textbookCode: textbookCode)
-            let questions = apiQuestions.map { q in
+            let questions = try guardEmpty(apiQuestions).map { q in
                 OrderingQuestion(
                     id: q.id,
                     shuffledParts: q.shuffledParts,
@@ -278,7 +288,7 @@ class PracticeViewModel: ObservableObject {
         listeningQuestions = .loading
         do {
             let (apiQuestions, _) = try await api.fetchListeningQuestions(textbookCode: textbookCode)
-            let questions = apiQuestions.map { q in
+            let questions = try guardEmpty(apiQuestions).map { q in
                 ListeningQuestion(
                     id: q.id,
                     audioURL: q.audioURL,
@@ -299,7 +309,7 @@ class PracticeViewModel: ObservableObject {
         speakingQuestions = .loading
         do {
             let (apiQuestions, _) = try await api.fetchSpeakingQuestions(textbookCode: textbookCode)
-            let questions = apiQuestions.map { q in
+            let questions = try guardEmpty(apiQuestions).map { q in
                 SpeakingQuestion(
                     id: q.id,
                     prompt: q.prompt,
@@ -318,7 +328,7 @@ class PracticeViewModel: ObservableObject {
         do {
             let (apiQuestions, _) = try await api.fetchVocabularyQuestions(textbookCode: textbookCode)
             // 词汇题复用 MCQQuestion 视图
-            let questions = apiQuestions.map { q in
+            let questions = try guardEmpty(apiQuestions).map { q in
                 MCQQuestion(
                     id: q.id,
                     stem: q.stem,
@@ -338,7 +348,7 @@ class PracticeViewModel: ObservableObject {
         do {
             let (apiQuestions, _) = try await api.fetchGrammarQuestions(textbookCode: textbookCode)
             // 语法题复用 MCQQuestion 视图
-            let questions = apiQuestions.map { q in
+            let questions = try guardEmpty(apiQuestions).map { q in
                 MCQQuestion(
                     id: q.id,
                     stem: q.stem,
@@ -358,7 +368,7 @@ class PracticeViewModel: ObservableObject {
         do {
             let apiKey = type.apiKey
             let (apiQuestions, _) = try await api.fetchScenarioQuestions(scenarioType: apiKey, textbookCode: textbookCode)
-            let questions = apiQuestions.map { q in
+            let questions = try guardEmpty(apiQuestions).map { q in
                 ScenarioQuestion(
                     id: q.id,
                     type: type,

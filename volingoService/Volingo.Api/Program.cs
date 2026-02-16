@@ -10,31 +10,37 @@ var builder = WebApplication.CreateBuilder(args);
 // Aspire service defaults (health checks, telemetry, resilience)
 builder.AddServiceDefaults();
 
-// Mock data service (in-memory, singleton)
-builder.Services.AddSingleton<MockDataService>();
-
-// Cosmos DB — manual registration (emulator uses Gateway mode)
-var cosmosConnectionString = builder.Configuration.GetConnectionString("cosmos");
+// Cosmos DB — required (no mock fallback)
+var cosmosConnectionString = builder.Configuration.GetConnectionString("cosmos")
+    ?? throw new InvalidOperationException(
+        "Missing ConnectionStrings:cosmos. Set it via environment variable or appsettings.");
 var databaseName = builder.Configuration["CosmosDb:DatabaseName"] ?? "volingo";
 
-if (!string.IsNullOrEmpty(cosmosConnectionString))
+// Cosmos SDK uses Newtonsoft.Json internally with camelCase —
+// must stay in sync with ASP.NET's STJ camelCase policy above.
+var isLocal = cosmosConnectionString.Contains("localhost");
+builder.Services.AddSingleton(_ => new CosmosClient(cosmosConnectionString, new CosmosClientOptions
 {
-    var isLocal = cosmosConnectionString.Contains("localhost");
-    builder.Services.AddSingleton(_ => new CosmosClient(cosmosConnectionString, new CosmosClientOptions
+    SerializerOptions = new CosmosSerializationOptions
     {
-        SerializerOptions = new CosmosSerializationOptions
-        {
-            PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase
-        },
-        ConnectionMode = isLocal ? ConnectionMode.Gateway : ConnectionMode.Direct
-    }));
-}
+        PropertyNamingPolicy = CosmosPropertyNamingPolicy.CamelCase
+    },
+    ConnectionMode = isLocal ? ConnectionMode.Gateway : ConnectionMode.Direct
+}));
 
-// JSON serialization
+// Service registrations (interface → Cosmos implementation)
+builder.Services.AddScoped<IQuestionService, CosmosQuestionService>();
+builder.Services.AddScoped<ISubmitResultService, CosmosSubmitResultService>();
+builder.Services.AddScoped<IWordbookService, CosmosWordbookService>();
+builder.Services.AddScoped<IReportService, CosmosReportService>();
+
+// JSON serialization — HttpJsonOptions defaults to JsonSerializerDefaults.Web
+// (camelCase + case-insensitive read). We add further customizations:
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
-    options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    // PropertyNamingPolicy already CamelCase via Web defaults
     options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
 });
 
 builder.Services.AddOpenApi();
@@ -52,11 +58,8 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-// Initialize Cosmos DB: create database & containers if not exist
-if (!string.IsNullOrEmpty(cosmosConnectionString))
-{
-    await app.InitializeCosmosDbAsync(databaseName);
-}
+// Initialize Cosmos DB: create database & containers
+await app.InitializeCosmosDbAsync(databaseName);
 
 // ── Root ──
 app.MapGet("/", () => Results.Ok(new { service = "Volingo API", version = "1.0.0", status = "running" }));
@@ -64,10 +67,8 @@ app.MapGet("/", () => Results.Ok(new { service = "Volingo API", version = "1.0.0
 // ── Volingo API endpoints (8 endpoints) ──
 app.MapVolingoEndpoints();
 
-// ── Cosmos DB status (only if Cosmos is configured) ──
-if (!string.IsNullOrEmpty(cosmosConnectionString))
-{
-    app.MapGet("/api/v1/db/status", async (CosmosClient cosmos) =>
+// ── Cosmos DB status ──
+app.MapGet("/api/v1/db/status", async (CosmosClient cosmos) =>
 {
     try
     {
@@ -95,6 +96,5 @@ if (!string.IsNullOrEmpty(cosmosConnectionString))
         return Results.Json(new { status = "error", message = ex.Message }, statusCode: 500);
     }
 });
-}
 
 app.Run();

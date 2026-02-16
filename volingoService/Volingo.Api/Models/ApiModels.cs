@@ -1,8 +1,5 @@
 namespace Volingo.Api.Models;
 
-// ── Error response ──
-public record ErrorResponse(string Error);
-
 // ── Practice: Questions ──
 public record QuestionsResponse(string QuestionType, string TextbookCode, int Remaining, List<object> Questions);
 public record ReadingQuestionsResponse(string QuestionType, string TextbookCode, int Remaining, List<object> Passages);
@@ -28,6 +25,3 @@ public record WordbookAddRequest(string Word, string? Phonetic, List<DefinitionI
 public record DefinitionItem(string PartOfSpeech, string Meaning, string? Example, string? ExampleTranslation);
 public record WordbookEntry(string Id, string Word, string? Phonetic, List<DefinitionItem> Definitions, string AddedAt);
 public record WordbookListResponse(int Total, List<WordbookEntry> Words);
-
-// ── Completion record (internal) ──
-public record CompletionRecord(string DeviceId, string QuestionId, string QuestionType, string TextbookCode, bool IsCorrect, int TimeSpentMs, DateTime CompletedAt);

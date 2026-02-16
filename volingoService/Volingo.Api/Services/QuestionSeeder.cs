@@ -1,270 +1,94 @@
-using System.Collections.Concurrent;
-using Volingo.Api.Models;
+using System.Text;
+using System.Text.Json;
+using Microsoft.Azure.Cosmos;
 
 namespace Volingo.Api.Services;
 
 /// <summary>
-/// In-memory mock data service. Replaces Cosmos DB until real question bank is ready.
-/// Stores completion records, reports, and wordbook entries per device.
+/// Seeds the "questions" container on first startup if empty.
+/// Reuses the same sample question data that was previously in MockDataService.
 /// </summary>
-public class MockDataService
+public static class QuestionSeeder
 {
-    // deviceId -> list of completion records
-    private readonly ConcurrentDictionary<string, List<CompletionRecord>> _completions = new();
+    private static readonly string[] TextbookCodes =
+    [
+        "juniorPEP-7a", "juniorPEP-7b", "juniorPEP-8a",
+        "primaryPEP-3a", "primaryPEP-3b", "primaryPEP-4a", "primaryPEP-4b",
+        "primaryPEP-5a", "primaryPEP-5b", "primaryPEP-6a", "primaryPEP-6b",
+        "seniorPEP-1a", "seniorPEP-1b", "seniorPEP-2a"
+    ];
 
-    // deviceId -> list of wordbook entries
-    private readonly ConcurrentDictionary<string, List<WordbookEntry>> _wordbooks = new();
-
-    // all reports
-    private readonly ConcurrentBag<(string DeviceId, ReportRequest Report, string ReportId)> _reports = [];
-
-    // Mock question bank: textbookCode -> questionType -> list of questions
-    private readonly Dictionary<string, Dictionary<string, List<object>>> _questionBank;
-
-    // Flat index: questionId -> (textbookCode, questionType)
-    private readonly Dictionary<string, (string TextbookCode, string QuestionType)> _questionIndex = new();
-
-    public MockDataService()
+    /// <summary>
+    /// Seed questions into the container if it is empty.
+    /// </summary>
+    public static async Task SeedAsync(Container container, ILogger logger)
     {
-        _questionBank = BuildMockQuestionBank();
+        // Quick check — if any document exists, skip seeding
+        var probe = container.GetItemQueryIterator<object>(
+            new QueryDefinition("SELECT TOP 1 c.id FROM c"),
+            requestOptions: new QueryRequestOptions { MaxItemCount = 1 });
 
-        // Build flat lookup index
-        foreach (var (textbookCode, types) in _questionBank)
-            foreach (var (questionType, questions) in types)
-                foreach (var q in questions)
-                    if (q is Dictionary<string, object> dict && dict.TryGetValue("id", out var id))
-                        _questionIndex[id.ToString()!] = (textbookCode, questionType);
-    }
+        if (probe.HasMoreResults)
+        {
+            var page = await probe.ReadNextAsync();
+            if (page.Count > 0)
+            {
+                logger.LogInformation("Questions container already seeded — skipping.");
+                return;
+            }
+        }
 
-    // ── Questions ──
+        logger.LogInformation("Seeding questions container...");
 
-    public (List<object> Questions, int Remaining) GetQuestions(string deviceId, string textbookCode, string questionType, int count)
-    {
-        var completedIds = GetCompletedQuestionIds(deviceId, textbookCode);
-
-        if (!_questionBank.TryGetValue(textbookCode, out var types))
-            types = _questionBank.Values.FirstOrDefault() ?? [];
-
-        if (!types.TryGetValue(questionType, out var allQuestions))
-            allQuestions = [];
-
-        var available = allQuestions
-            .Where(q => !completedIds.Contains(GetQuestionId(q)))
+        // Group all questions per partition key and upsert in parallel (per partition)
+        var allQuestions = TextbookCodes
+            .SelectMany(code => BuildQuestionsForTextbook(code).Select(q => (code, q)))
             .ToList();
 
-        var selected = available.OrderBy(_ => Random.Shared.Next()).Take(count).ToList();
-        var remaining = available.Count - selected.Count;
+        int total = allQuestions.Count;
+        int done = 0;
 
-        return (selected, remaining);
-    }
-
-    // ── Today Package ──
-
-    public TodayPackageResponse GetTodayPackage(string deviceId, string textbookCode)
-    {
-        var types = new[] {
-            ("multipleChoice", 10, 0.35),
-            ("cloze", 5, 0.20),
-            ("reading", 3, 0.20),
-            ("listening", 3, 0.15),
-            ("vocabulary", 5, 0.10)
-        };
-
-        var items = new List<PackageItem>();
-        foreach (var (type, count, weight) in types)
-        {
-            var (questions, _) = GetQuestions(deviceId, textbookCode, type, count);
-            if (questions.Count > 0)
+        // Parallel within each partition key (safe for Cosmos), max 10 concurrent
+        await Parallel.ForEachAsync(
+            allQuestions,
+            new ParallelOptions { MaxDegreeOfParallelism = 10 },
+            async (item, ct) =>
             {
-                items.Add(new PackageItem(type, questions.Count, weight, questions));
-            }
-        }
+                var json = JsonSerializer.Serialize(item.q);
+                using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+                await container.UpsertItemStreamAsync(stream, new PartitionKey(item.code));
+                Interlocked.Increment(ref done);
+            });
 
-        return new TodayPackageResponse(
-            Date: DateTime.UtcNow.ToString("yyyy-MM-dd"),
-            TextbookCode: textbookCode,
-            EstimatedMinutes: 15,
-            Items: items
-        );
+        logger.LogInformation("✅ Seeded {Count} questions across {Textbooks} textbooks.", total, TextbookCodes.Length);
     }
 
-    // ── Submit ──
+    // ──────────────────────────────────────────────────
+    //  Question generators (same data as old MockDataService)
+    // ──────────────────────────────────────────────────
 
-    public void Submit(string deviceId, SubmitRequest request)
+    private static List<Dictionary<string, object>> BuildQuestionsForTextbook(string code)
     {
-        var records = _completions.GetOrAdd(deviceId, _ => []);
+        var all = new List<Dictionary<string, object>>();
+        all.AddRange(GenerateMCQ(code, 20));
+        all.AddRange(GenerateCloze(code, 10));
+        all.AddRange(GenerateReading(code, 5));
+        all.AddRange(GenerateTranslation(code, 8));
+        all.AddRange(GenerateRewriting(code, 6));
+        all.AddRange(GenerateErrorCorrection(code, 6));
+        all.AddRange(GenerateOrdering(code, 6));
+        all.AddRange(GenerateListening(code, 8));
+        all.AddRange(GenerateSpeaking(code, 6));
+        all.AddRange(GenerateWriting(code, 4));
+        all.AddRange(GenerateVocabulary(code, 10));
+        all.AddRange(GenerateGrammar(code, 8));
+        return all;
+    }
 
-        foreach (var item in request.Results)
+    private static List<Dictionary<string, object>> GenerateMCQ(string textbookCode, int count)
+    {
+        var stems = new (string Stem, string Translation, string[] Options, int Correct)[]
         {
-            // ON CONFLICT DO NOTHING — idempotent
-            if (records.Any(r => r.QuestionId == item.QuestionId))
-                continue;
-
-            // Look up textbookCode & questionType from question bank
-            var (textbookCode, questionType) = _questionIndex.TryGetValue(item.QuestionId, out var meta)
-                ? meta
-                : ("unknown", "unknown");
-
-            records.Add(new CompletionRecord(
-                deviceId, item.QuestionId, questionType, textbookCode,
-                item.IsCorrect, 0, DateTime.UtcNow
-            ));
-        }
-    }
-
-    // ── Report ──
-
-    public string Report(string deviceId, ReportRequest request)
-    {
-        var reportId = Guid.NewGuid().ToString("N");
-        _reports.Add((deviceId, request, reportId));
-        return reportId;
-    }
-
-    // ── Stats ──
-
-    public StatsResponse GetStats(string deviceId, int days)
-    {
-        var records = _completions.GetOrAdd(deviceId, _ => []);
-
-        var totalCompleted = records.Count;
-        var totalCorrect = records.Count(r => r.IsCorrect);
-
-        var cutoff = DateTime.UtcNow.Date.AddDays(-days);
-        var dailyGroups = records
-            .Where(r => r.CompletedAt >= cutoff)
-            .GroupBy(r => r.CompletedAt.ToString("yyyy-MM-dd"))
-            .ToDictionary(g => g.Key, g => (Count: g.Count(), Correct: g.Count(r => r.IsCorrect)));
-
-        // Build daily activity array (fill missing days with 0)
-        var dailyActivity = new List<DailyActivity>();
-        for (var d = DateTime.UtcNow.Date; d >= cutoff; d = d.AddDays(-1))
-        {
-            var key = d.ToString("yyyy-MM-dd");
-            dailyGroups.TryGetValue(key, out var val);
-            dailyActivity.Add(new DailyActivity(key, val.Count, val.Correct));
-        }
-
-        // Calculate streaks
-        var (current, longest) = CalculateStreaks(dailyActivity);
-
-        return new StatsResponse(totalCompleted, totalCorrect, current, longest, dailyActivity);
-    }
-
-    // ── Wordbook ──
-
-    public WordbookEntry AddWord(string deviceId, WordbookAddRequest request)
-    {
-        var entries = _wordbooks.GetOrAdd(deviceId, _ => []);
-
-        var existing = entries.FirstOrDefault(e => e.Word.Equals(request.Word, StringComparison.OrdinalIgnoreCase));
-        if (existing is not null)
-            return existing;
-
-        var id = Guid.NewGuid().ToString();
-        var now = DateTime.UtcNow.ToString("o");
-        var entry = new WordbookEntry(id, request.Word, request.Phonetic, request.Definitions, now);
-        entries.Add(entry);
-
-        return entry;
-    }
-
-    public bool DeleteWord(string deviceId, string wordId)
-    {
-        if (!_wordbooks.TryGetValue(deviceId, out var entries)) return false;
-        return entries.RemoveAll(e => e.Id == wordId) > 0;
-    }
-
-    public WordbookListResponse GetWordbook(string deviceId)
-    {
-        var entries = _wordbooks.GetOrAdd(deviceId, _ => []);
-        var sorted = entries.OrderByDescending(e => e.AddedAt).ToList();
-        return new WordbookListResponse(sorted.Count, sorted);
-    }
-
-    // ── Helpers ──
-
-    private HashSet<string> GetCompletedQuestionIds(string deviceId, string textbookCode)
-    {
-        if (!_completions.TryGetValue(deviceId, out var records)) return [];
-        return records.Where(r => r.TextbookCode == textbookCode).Select(r => r.QuestionId).ToHashSet();
-    }
-
-    private int GetTotalQuestionsForTextbook(string textbookCode)
-    {
-        if (!_questionBank.TryGetValue(textbookCode, out var types))
-            types = _questionBank.Values.FirstOrDefault() ?? [];
-        return types.Values.Sum(q => q.Count);
-    }
-
-    private static string GetQuestionId(object q)
-    {
-        if (q is Dictionary<string, object> dict && dict.TryGetValue("id", out var id))
-            return id?.ToString() ?? "";
-        return "";
-    }
-
-    private static (int Current, int Longest) CalculateStreaks(List<DailyActivity> daily)
-    {
-        int current = 0, longest = 0, streak = 0;
-        bool countingCurrent = true;
-
-        foreach (var d in daily) // already sorted desc (today first)
-        {
-            if (d.Count > 0)
-            {
-                streak++;
-                if (countingCurrent) current = streak;
-                longest = Math.Max(longest, streak);
-            }
-            else
-            {
-                countingCurrent = false;
-                streak = 0;
-            }
-        }
-        return (current, longest);
-    }
-
-    // ── Mock Question Bank ──
-
-    private static Dictionary<string, Dictionary<string, List<object>>> BuildMockQuestionBank()
-    {
-        var bank = new Dictionary<string, Dictionary<string, List<object>>>();
-
-        // Generate for sample textbooks (cover all stages for mock)
-        var textbookCodes = new[] {
-            "juniorPEP-7a", "juniorPEP-7b", "juniorPEP-8a",
-            "primaryPEP-3a", "primaryPEP-3b", "primaryPEP-4a", "primaryPEP-4b",
-            "primaryPEP-5a", "primaryPEP-5b", "primaryPEP-6a", "primaryPEP-6b",
-            "seniorPEP-1a", "seniorPEP-1b", "seniorPEP-2a"
-        };
-
-        foreach (var code in textbookCodes)
-        {
-            bank[code] = new Dictionary<string, List<object>>
-            {
-                ["multipleChoice"] = GenerateMCQ(code, 20),
-                ["cloze"] = GenerateCloze(code, 10),
-                ["reading"] = GenerateReading(code, 5),
-                ["translation"] = GenerateTranslation(code, 8),
-                ["rewriting"] = GenerateRewriting(code, 6),
-                ["errorCorrection"] = GenerateErrorCorrection(code, 6),
-                ["sentenceOrdering"] = GenerateOrdering(code, 6),
-                ["listening"] = GenerateListening(code, 8),
-                ["speaking"] = GenerateSpeaking(code, 6),
-                ["writing"] = GenerateWriting(code, 4),
-                ["vocabulary"] = GenerateVocabulary(code, 10),
-                ["grammar"] = GenerateGrammar(code, 8),
-            };
-        }
-
-        return bank;
-    }
-
-    private static List<object> GenerateMCQ(string textbookCode, int count)
-    {
-        var stems = new (string Stem, string Translation, string[] Options, int Correct)[] {
             ("What is the capital of the UK?", "英国的首都是什么？", ["Paris", "London", "Berlin", "Madrid"], 1),
             ("Which word means 'happy'?", "\u201c快乐的\u201d是哪个词？", ["sad", "angry", "joyful", "tired"], 2),
             ("She ___ to school every day.", "她每天___去学校。", ["go", "goes", "going", "went"], 1),
@@ -275,7 +99,7 @@ public class MockDataService
         return Enumerable.Range(0, count).Select(i =>
         {
             var (stem, translation, options, correct) = stems[i % stems.Length];
-            return (object)new Dictionary<string, object>
+            return new Dictionary<string, object>
             {
                 ["id"] = Guid.NewGuid().ToString(),
                 ["questionType"] = "multipleChoice",
@@ -290,9 +114,10 @@ public class MockDataService
         }).ToList();
     }
 
-    private static List<object> GenerateCloze(string textbookCode, int count)
+    private static List<Dictionary<string, object>> GenerateCloze(string textbookCode, int count)
     {
-        var items = new (string Sentence, string Translation, string Answer, string[] Hints)[] {
+        var items = new (string Sentence, string Translation, string Answer, string[] Hints)[]
+        {
             ("I have ___ been to Beijing.", "我___去过北京。", "already", ["already", "yet", "still", "never"]),
             ("She is good ___ singing.", "她擅长___唱歌。", "at", ["at", "in", "on", "for"]),
             ("They ___ playing football now.", "他们现在正在踢足球。", "are", ["are", "is", "was", "were"]),
@@ -301,7 +126,7 @@ public class MockDataService
         return Enumerable.Range(0, count).Select(i =>
         {
             var (sentence, translation, answer, hints) = items[i % items.Length];
-            return (object)new Dictionary<string, object>
+            return new Dictionary<string, object>
             {
                 ["id"] = Guid.NewGuid().ToString(),
                 ["questionType"] = "cloze",
@@ -316,9 +141,9 @@ public class MockDataService
         }).ToList();
     }
 
-    private static List<object> GenerateReading(string textbookCode, int count)
+    private static List<Dictionary<string, object>> GenerateReading(string textbookCode, int count)
     {
-        return Enumerable.Range(0, count).Select(i => (object)new Dictionary<string, object>
+        return Enumerable.Range(0, count).Select(i => new Dictionary<string, object>
         {
             ["id"] = Guid.NewGuid().ToString(),
             ["questionType"] = "reading",
@@ -326,9 +151,9 @@ public class MockDataService
             ["title"] = $"A Day at School #{i + 1}",
             ["content"] = "Tom gets up at seven o'clock every morning. He has breakfast and then goes to school by bus. He likes English and math. After school, he plays basketball with his friends.",
             ["translation"] = "汤姆每天早上七点起床。他吃完早餐后坐公交去学校。他喜欢英语和数学。放学后，他和朋友们打篮球。",
-            ["questions"] = new List<object>
+            ["questions"] = new List<Dictionary<string, object>>
             {
-                new Dictionary<string, object>
+                new()
                 {
                     ["id"] = Guid.NewGuid().ToString(),
                     ["stem"] = "What time does Tom get up?",
@@ -337,7 +162,7 @@ public class MockDataService
                     ["correctIndex"] = 1,
                     ["explanation"] = "The passage says 'Tom gets up at seven o'clock every morning.'"
                 },
-                new Dictionary<string, object>
+                new()
                 {
                     ["id"] = Guid.NewGuid().ToString(),
                     ["stem"] = "How does Tom go to school?",
@@ -350,9 +175,10 @@ public class MockDataService
         }).ToList();
     }
 
-    private static List<object> GenerateTranslation(string textbookCode, int count)
+    private static List<Dictionary<string, object>> GenerateTranslation(string textbookCode, int count)
     {
-        var items = new[] {
+        var items = new[]
+        {
             ("I want to be a teacher when I grow up.", "我长大后想当一名老师。"),
             ("Can you help me with my homework?", "你能帮我做作业吗？"),
             ("The weather is very nice today.", "今天天气很好。"),
@@ -361,7 +187,7 @@ public class MockDataService
         return Enumerable.Range(0, count).Select(i =>
         {
             var (source, reference) = items[i % items.Length];
-            return (object)new Dictionary<string, object>
+            return new Dictionary<string, object>
             {
                 ["id"] = Guid.NewGuid().ToString(),
                 ["questionType"] = "translation",
@@ -376,9 +202,9 @@ public class MockDataService
         }).ToList();
     }
 
-    private static List<object> GenerateRewriting(string textbookCode, int count)
+    private static List<Dictionary<string, object>> GenerateRewriting(string textbookCode, int count)
     {
-        return Enumerable.Range(0, count).Select(i => (object)new Dictionary<string, object>
+        return Enumerable.Range(0, count).Select(i => new Dictionary<string, object>
         {
             ["id"] = Guid.NewGuid().ToString(),
             ["questionType"] = "rewriting",
@@ -394,9 +220,9 @@ public class MockDataService
         }).ToList();
     }
 
-    private static List<object> GenerateErrorCorrection(string textbookCode, int count)
+    private static List<Dictionary<string, object>> GenerateErrorCorrection(string textbookCode, int count)
     {
-        return Enumerable.Range(0, count).Select(i => (object)new Dictionary<string, object>
+        return Enumerable.Range(0, count).Select(i => new Dictionary<string, object>
         {
             ["id"] = Guid.NewGuid().ToString(),
             ["questionType"] = "errorCorrection",
@@ -410,9 +236,9 @@ public class MockDataService
         }).ToList();
     }
 
-    private static List<object> GenerateOrdering(string textbookCode, int count)
+    private static List<Dictionary<string, object>> GenerateOrdering(string textbookCode, int count)
     {
-        return Enumerable.Range(0, count).Select(i => (object)new Dictionary<string, object>
+        return Enumerable.Range(0, count).Select(i => new Dictionary<string, object>
         {
             ["id"] = Guid.NewGuid().ToString(),
             ["questionType"] = "sentenceOrdering",
@@ -426,9 +252,9 @@ public class MockDataService
         }).ToList();
     }
 
-    private static List<object> GenerateListening(string textbookCode, int count)
+    private static List<Dictionary<string, object>> GenerateListening(string textbookCode, int count)
     {
-        return Enumerable.Range(0, count).Select(i => (object)new Dictionary<string, object>
+        return Enumerable.Range(0, count).Select(i => new Dictionary<string, object>
         {
             ["id"] = Guid.NewGuid().ToString(),
             ["questionType"] = "listening",
@@ -445,9 +271,10 @@ public class MockDataService
         }).ToList();
     }
 
-    private static List<object> GenerateVocabulary(string textbookCode, int count)
+    private static List<Dictionary<string, object>> GenerateVocabulary(string textbookCode, int count)
     {
-        var words = new[] {
+        var words = new[]
+        {
             ("achieve", "实现；达到", "She worked hard to achieve her goals.", "她努力工作以实现她的目标。"),
             ("brilliant", "杰出的；明亮的", "He is a brilliant student.", "他是一个杰出的学生。"),
             ("confident", "自信的", "She feels confident about the exam.", "她对考试感到自信。"),
@@ -456,7 +283,7 @@ public class MockDataService
         return Enumerable.Range(0, count).Select(i =>
         {
             var (word, meaning, example, exampleTrans) = words[i % words.Length];
-            return (object)new Dictionary<string, object>
+            return new Dictionary<string, object>
             {
                 ["id"] = Guid.NewGuid().ToString(),
                 ["questionType"] = "vocabulary",
@@ -477,9 +304,9 @@ public class MockDataService
         }).ToList();
     }
 
-    private static List<object> GenerateGrammar(string textbookCode, int count)
+    private static List<Dictionary<string, object>> GenerateGrammar(string textbookCode, int count)
     {
-        return Enumerable.Range(0, count).Select(i => (object)new Dictionary<string, object>
+        return Enumerable.Range(0, count).Select(i => new Dictionary<string, object>
         {
             ["id"] = Guid.NewGuid().ToString(),
             ["questionType"] = "grammar",
@@ -495,9 +322,10 @@ public class MockDataService
         }).ToList();
     }
 
-    private static List<object> GenerateSpeaking(string textbookCode, int count)
+    private static List<Dictionary<string, object>> GenerateSpeaking(string textbookCode, int count)
     {
-        var items = new (string Prompt, string Reference, string Translation, string Category)[] {
+        var items = new (string Prompt, string Reference, string Translation, string Category)[]
+        {
             ("Please read the following sentence aloud:", "The weather is beautiful today, isn't it?", "今天天气真好，不是吗？", "readAloud"),
             ("Listen and repeat:", "I would like a cup of coffee, please.", "我想要一杯咖啡，谢谢。", "readAloud"),
             ("Answer the following question:", "What do you usually do on weekends?", "你周末通常做什么？", "respond"),
@@ -508,7 +336,7 @@ public class MockDataService
         return Enumerable.Range(0, count).Select(i =>
         {
             var (prompt, reference, translation, category) = items[i % items.Length];
-            return (object)new Dictionary<string, object>
+            return new Dictionary<string, object>
             {
                 ["id"] = Guid.NewGuid().ToString(),
                 ["questionType"] = "speaking",
@@ -521,9 +349,10 @@ public class MockDataService
         }).ToList();
     }
 
-    private static List<object> GenerateWriting(string textbookCode, int count)
+    private static List<Dictionary<string, object>> GenerateWriting(string textbookCode, int count)
     {
-        var items = new (string Prompt, string PromptTranslation, string Category, int MinWords, int MaxWords, string Reference, string ReferenceTranslation)[] {
+        var items = new (string Prompt, string PromptTranslation, string Category, int MinWords, int MaxWords, string Reference, string ReferenceTranslation)[]
+        {
             ("Write a short paragraph about your favorite hobby.", "写一段关于你最喜欢的爱好的短文。", "paragraph", 50, 100,
              "My favorite hobby is reading. I enjoy it because it allows me to explore different worlds and learn new things. I usually read for about an hour every evening before bed.",
              "我最喜欢的爱好是阅读。我喜欢它，因为它让我探索不同的世界并学习新事物。我通常每天晚上睡前读大约一个小时的书。"),
@@ -541,7 +370,7 @@ public class MockDataService
         return Enumerable.Range(0, count).Select(i =>
         {
             var (prompt, promptTrans, category, minWords, maxWords, reference, refTrans) = items[i % items.Length];
-            return (object)new Dictionary<string, object>
+            return new Dictionary<string, object>
             {
                 ["id"] = Guid.NewGuid().ToString(),
                 ["questionType"] = "writing",
