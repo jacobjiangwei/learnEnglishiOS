@@ -10,6 +10,7 @@ import SwiftUI
 /// 填空题练习
 struct ClozePracticeView: View {
     let questions: [ClozeQuestion]
+    var onAnswer: ((String, Bool) -> Void)? = nil
     @State private var currentIndex = 0
     @State private var userAnswer = ""
     @State private var submitted = false
@@ -98,7 +99,9 @@ struct ClozePracticeView: View {
     private func submitAnswer(_ q: ClozeQuestion) {
         submitted = true
         isFocused = false
-        if checkAnswer(q) { correctCount += 1 }
+        let isCorrect = checkAnswer(q)
+        if isCorrect { correctCount += 1 }
+        onAnswer?(q.id, isCorrect)
     }
 
     private func nextQuestion() {

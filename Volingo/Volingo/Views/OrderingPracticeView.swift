@@ -10,6 +10,7 @@ import SwiftUI
 /// 排序题练习
 struct OrderingPracticeView: View {
     let questions: [OrderingQuestion]
+    var onAnswer: ((String, Bool) -> Void)? = nil
     @State private var currentIndex = 0
     @State private var selectedIndices: [Int] = []
     @State private var submitted = false
@@ -126,7 +127,9 @@ struct OrderingPracticeView: View {
 
     private func submit(_ question: OrderingQuestion) {
         submitted = true
-        if selectedIndices == question.correctOrder { correctCount += 1 }
+        let isCorrect = selectedIndices == question.correctOrder
+        if isCorrect { correctCount += 1 }
+        onAnswer?(question.id, isCorrect)
     }
 
     private func nextQuestion() {

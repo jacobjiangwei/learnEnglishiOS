@@ -15,10 +15,12 @@ class HomeViewModel: ObservableObject {
     @Published var stats: StatsResponse?
     @Published var isLoading = false
     @Published var errorMessage: String?
+    var hasLoaded = false
 
     private let api = APIService.shared
 
-    func load(textbookCode: String) {
+    func load(textbookCode: String, force: Bool = false) {
+        guard force || !hasLoaded else { return }
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
@@ -51,6 +53,7 @@ class HomeViewModel: ObservableObject {
             }
 
             isLoading = false
+            hasLoaded = true
         }
     }
 
@@ -103,6 +106,9 @@ struct HomeView: View {
             .onAppear {
                 vm.load(textbookCode: textbookCode)
                 AnalyticsService.shared.trackScreenView("HomeView")
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .practiceResultsSubmitted)) { _ in
+                vm.load(textbookCode: textbookCode, force: true)
             }
         }
     }

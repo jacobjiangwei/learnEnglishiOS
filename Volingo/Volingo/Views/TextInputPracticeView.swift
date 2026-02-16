@@ -11,6 +11,7 @@ import SwiftUI
 struct TextInputPracticeView: View {
     let title: String
     let items: [TextInputItem]
+    var onAnswer: ((String, Bool) -> Void)? = nil
     @State private var currentIndex = 0
     @State private var userAnswer = ""
     @State private var submitted = false
@@ -111,6 +112,7 @@ struct TextInputPracticeView: View {
                                         Button {
                                             correctCount += 1
                                             selfEvalDone = true
+                                            onAnswer?(items[currentIndex].id, true)
                                         } label: {
                                             Label("答对了", systemImage: "checkmark.circle.fill")
                                                 .font(.headline)
@@ -122,6 +124,7 @@ struct TextInputPracticeView: View {
                                         }
                                         Button {
                                             selfEvalDone = true
+                                            onAnswer?(items[currentIndex].id, false)
                                         } label: {
                                             Label("没答对", systemImage: "xmark.circle.fill")
                                                 .font(.headline)
@@ -159,12 +162,13 @@ struct TextInputPracticeView: View {
         isFocused = false
         // 自评模式由用户按钮判定，这里不自动计分
         if !item.isSelfEvaluated {
+            var isCorrect = true
             if !item.keywords.isEmpty {
                 let matchCount = item.keywords.filter { userAnswer.lowercased().contains($0.lowercased()) }.count
-                if Double(matchCount) / Double(item.keywords.count) >= 0.5 { correctCount += 1 }
-            } else {
-                correctCount += 1
+                isCorrect = Double(matchCount) / Double(item.keywords.count) >= 0.5
             }
+            if isCorrect { correctCount += 1 }
+            onAnswer?(item.id, isCorrect)
         }
     }
 

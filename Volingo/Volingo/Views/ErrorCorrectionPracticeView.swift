@@ -10,6 +10,7 @@ import SwiftUI
 /// 纠错题练习
 struct ErrorCorrectionPracticeView: View {
     let questions: [ErrorCorrectionQuestion]
+    var onAnswer: ((String, Bool) -> Void)? = nil
     @State private var currentIndex = 0
     @State private var selectedWord: String? = nil
     @State private var showExplanation = false
@@ -51,7 +52,9 @@ struct ErrorCorrectionPracticeView: View {
                                     let cleanWord = word.trimmingCharacters(in: .punctuationCharacters)
                                     selectedWord = cleanWord
                                     showExplanation = true
-                                    if cleanWord == question.errorRange { correctCount += 1 }
+                                    let isCorrect = cleanWord == question.errorRange
+                                    if isCorrect { correctCount += 1 }
+                                    onAnswer?(question.id, isCorrect)
                                 }) {
                                     Text(word)
                                         .font(.body)

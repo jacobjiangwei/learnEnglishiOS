@@ -8,6 +8,10 @@
 import Foundation
 import SwiftUI
 
+extension Notification.Name {
+    static let practiceResultsSubmitted = Notification.Name("practiceResultsSubmitted")
+}
+
 // MARK: - 加载状态
 
 enum LoadingState<T> {
@@ -92,6 +96,7 @@ class PracticeViewModel: ObservableObject {
         let results = questionIds.map { SubmitResultItem(questionId: $0.id, isCorrect: $0.isCorrect) }
         do {
             try await api.submitResults(results)
+            NotificationCenter.default.post(name: .practiceResultsSubmitted, object: nil)
         } catch {
             print("提交答案失败: \(error)")
         }

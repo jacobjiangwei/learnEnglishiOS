@@ -11,6 +11,7 @@ import SwiftUI
 struct MCQPracticeView: View {
     let title: String
     let questions: [MCQQuestion]
+    var onAnswer: ((String, Bool) -> Void)? = nil
     @State private var currentIndex = 0
     @State private var selectedIndex: Int? = nil
     @State private var showExplanation = false
@@ -45,7 +46,9 @@ struct MCQPracticeView: View {
                                 guard !showExplanation else { return }
                                 selectedIndex = index
                                 showExplanation = true
-                                if index == question.correctIndex { correctCount += 1 }
+                                let isCorrect = index == question.correctIndex
+                                if isCorrect { correctCount += 1 }
+                                onAnswer?(question.id, isCorrect)
                             }
                         }
 

@@ -10,6 +10,7 @@ import SwiftUI
 /// 听力专项练习（Mock：点击播放显示原文）
 struct ListeningPracticeView: View {
     let questions: [ListeningQuestion]
+    var onAnswer: ((String, Bool) -> Void)? = nil
     @State private var currentIndex = 0
     @State private var selectedIndex: Int? = nil
     @State private var showExplanation = false
@@ -80,7 +81,9 @@ struct ListeningPracticeView: View {
                                 guard !showExplanation else { return }
                                 selectedIndex = index
                                 showExplanation = true
-                                if index == question.correctIndex { correctCount += 1 }
+                                let isCorrect = index == question.correctIndex
+                                if isCorrect { correctCount += 1 }
+                                onAnswer?(question.id, isCorrect)
                             }
                         }
 

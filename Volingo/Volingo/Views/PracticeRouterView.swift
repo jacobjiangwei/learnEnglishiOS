@@ -17,6 +17,10 @@ struct PracticeRouterView: View {
         store.currentTextbookCode ?? "juniorPEP-7a"
     }
 
+    private func handleAnswer(_ questionId: String, _ isCorrect: Bool) {
+        vm.recordAnswer(questionId: questionId, isCorrect: isCorrect)
+    }
+
     var body: some View {
         Group {
             switch questionType {
@@ -58,6 +62,9 @@ struct PracticeRouterView: View {
             AnalyticsService.shared.trackPracticeStarted(questionType: questionType.apiKey, textbookCode: textbookCode)
             AnalyticsService.shared.trackScreenView("Practice_\(questionType.rawValue)")
         }
+        .onDisappear {
+            Task { await vm.submitResults() }
+        }
     }
 
     // MARK: - 通用加载 / 错误视图
@@ -96,7 +103,7 @@ struct PracticeRouterView: View {
         case .idle, .loading:
             loadingView()
         case .loaded(let questions):
-            MCQPracticeView(title: title, questions: questions)
+            MCQPracticeView(title: title, questions: questions, onAnswer: handleAnswer)
         case .error(let msg):
             errorView(msg)
         }
@@ -110,7 +117,7 @@ struct PracticeRouterView: View {
         case .idle, .loading:
             loadingView()
         case .loaded(let questions):
-            ClozePracticeView(questions: questions)
+            ClozePracticeView(questions: questions, onAnswer: handleAnswer)
         case .error(let msg):
             errorView(msg)
         }
@@ -124,7 +131,7 @@ struct PracticeRouterView: View {
         case .idle, .loading:
             loadingView()
         case .loaded(let passage):
-            ReadingPracticeView(passage: passage)
+            ReadingPracticeView(passage: passage, onAnswer: handleAnswer)
         case .error(let msg):
             errorView(msg)
         }
@@ -138,7 +145,7 @@ struct PracticeRouterView: View {
         case .idle, .loading:
             loadingView()
         case .loaded(let items):
-            TextInputPracticeView(title: title, items: items)
+            TextInputPracticeView(title: title, items: items, onAnswer: handleAnswer)
         case .error(let msg):
             errorView(msg)
         }
@@ -152,7 +159,7 @@ struct PracticeRouterView: View {
         case .idle, .loading:
             loadingView()
         case .loaded(let questions):
-            ErrorCorrectionPracticeView(questions: questions)
+            ErrorCorrectionPracticeView(questions: questions, onAnswer: handleAnswer)
         case .error(let msg):
             errorView(msg)
         }
@@ -166,7 +173,7 @@ struct PracticeRouterView: View {
         case .idle, .loading:
             loadingView()
         case .loaded(let questions):
-            OrderingPracticeView(questions: questions)
+            OrderingPracticeView(questions: questions, onAnswer: handleAnswer)
         case .error(let msg):
             errorView(msg)
         }
@@ -180,7 +187,7 @@ struct PracticeRouterView: View {
         case .idle, .loading:
             loadingView()
         case .loaded(let questions):
-            ListeningPracticeView(questions: questions)
+            ListeningPracticeView(questions: questions, onAnswer: handleAnswer)
         case .error(let msg):
             errorView(msg)
         }
@@ -194,7 +201,7 @@ struct PracticeRouterView: View {
         case .idle, .loading:
             loadingView()
         case .loaded(let questions):
-            SpeakingPracticeView(questions: questions)
+            SpeakingPracticeView(questions: questions, onAnswer: handleAnswer)
         case .error(let msg):
             errorView(msg)
         }
@@ -208,7 +215,7 @@ struct PracticeRouterView: View {
         case .idle, .loading:
             loadingView()
         case .loaded(let questions):
-            ScenarioPracticeView(questions: questions)
+            ScenarioPracticeView(questions: questions, onAnswer: handleAnswer)
         case .error(let msg):
             errorView(msg)
         }

@@ -10,6 +10,7 @@ import SwiftUI
 /// 场景对话练习
 struct ScenarioPracticeView: View {
     let questions: [ScenarioQuestion]
+    var onAnswer: ((String, Bool) -> Void)? = nil
     @State private var currentIndex = 0
     @State private var selectedIndex: Int? = nil
     @State private var showExplanation = false
@@ -72,7 +73,9 @@ struct ScenarioPracticeView: View {
                                     guard !showExplanation else { return }
                                     selectedIndex = index
                                     showExplanation = true
-                                    if index == correctIdx { correctCount += 1 }
+                                    let isCorrect = index == correctIdx
+                                    if isCorrect { correctCount += 1 }
+                                    onAnswer?(question.id, isCorrect)
                                 }
                             }
                         }

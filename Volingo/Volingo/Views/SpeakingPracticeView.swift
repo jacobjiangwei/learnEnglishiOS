@@ -10,6 +10,7 @@ import SwiftUI
 /// 口语专项练习（Mock：模拟录音 + 评分）
 struct SpeakingPracticeView: View {
     let questions: [SpeakingQuestion]
+    var onAnswer: ((String, Bool) -> Void)? = nil
     @State private var currentIndex = 0
     @State private var isRecording = false
     @State private var hasRecorded = false
@@ -65,6 +66,7 @@ struct SpeakingPracticeView: View {
                                 if !isRecording {
                                     hasRecorded = true
                                     showReference = true
+                                    onAnswer?(questions[currentIndex].id, true)
                                 }
                             }
                         }) {
