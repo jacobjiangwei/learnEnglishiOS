@@ -225,10 +225,10 @@ LIMIT :count;
 ### speakingCategory（口语子类型）
 
 ```
-"readAloud" — 跟读
-"respond"   — 对话回答
-"retell"    — 复述
-"describe"  — 看图说话
+"readAloud"       — 朗读句子（显示英文，用户朗读）
+"translateSpeak"  — 翻译并朗读（显示中文，用户说出英文）
+"listenRepeat"    — 听后跟读（播放音频+显示文字，用户跟读）
+"completeSpeak"   — 补全句子（显示不完整句子，用户说出完整版）
 ```
 
 ### writingCategory（写作子类型）

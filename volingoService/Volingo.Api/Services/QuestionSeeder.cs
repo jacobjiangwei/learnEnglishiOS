@@ -326,11 +326,20 @@ public static class QuestionSeeder
     {
         var items = new (string Prompt, string Reference, string Translation, string Category)[]
         {
-            ("Please read the following sentence aloud:", "The weather is beautiful today, isn't it?", "今天天气真好，不是吗？", "readAloud"),
-            ("Listen and repeat:", "I would like a cup of coffee, please.", "我想要一杯咖啡，谢谢。", "readAloud"),
-            ("Answer the following question:", "What do you usually do on weekends?", "你周末通常做什么？", "respond"),
-            ("Retell the story in your own words:", "A boy found a lost puppy and took it home. His mother helped him find the owner.", "一个男孩发现了一只走失的小狗并把它带回了家。他的妈妈帮他找到了主人。", "retell"),
-            ("Describe what you see in the picture:", "There is a park with children playing on the swings and slides.", "公园里有孩子们在荡秋千和滑滑梯。", "describe"),
+            // 朗读句子：显示英文，用户照着读
+            ("请朗读以下句子：", "The weather is beautiful today, isn't it?", "今天天气真好，不是吗？", "readAloud"),
+            ("请朗读以下句子：", "I would like a cup of coffee, please.", "我想要一杯咖啡，谢谢。", "readAloud"),
+            ("请朗读以下句子：", "She goes to school by bus every morning.", "她每天早上坐公交车上学。", "readAloud"),
+            // 翻译说：显示中文，用户说出英文
+            ("请将下面的中文翻译成英文并朗读：", "What do you usually do on weekends?", "你周末通常做什么？", "translateSpeak"),
+            ("请将下面的中文翻译成英文并朗读：", "My favorite subject is English.", "我最喜欢的科目是英语。", "translateSpeak"),
+            ("请将下面的中文翻译成英文并朗读：", "Can you help me with my homework?", "你能帮我做作业吗？", "translateSpeak"),
+            // 听后跟读：先播放音频，用户跟着说
+            ("请先听示范朗读，然后跟读：", "I like to read books in the library.", "我喜欢在图书馆看书。", "listenRepeat"),
+            ("请先听示范朗读，然后跟读：", "There are many animals in the zoo.", "动物园里有很多动物。", "listenRepeat"),
+            // 补全句子：空出一部分，用户说完整句子
+            ("请补全并朗读完整句子：I ___ to school every day.", "I go to school every day.", "我每天去学校。", "completeSpeak"),
+            ("请补全并朗读完整句子：She ___ reading books.", "She enjoys reading books.", "她喜欢看书。", "completeSpeak"),
         };
 
         return Enumerable.Range(0, count).Select(i =>

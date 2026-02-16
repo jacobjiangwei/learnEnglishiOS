@@ -135,7 +135,7 @@ enum QuestionType: String, Codable, CaseIterable, Identifiable {
         case .errorCorrection:   return "找错改错"
         case .sentenceOrdering:  return "句子/段落排序"
         case .listening:         return "对话/独白/笔记"
-        case .speaking:          return "跟读/对话/复述"
+        case .speaking:          return "朗读/翻译说/跟读"
         case .writing:           return "写句/写段/应用文"
         case .vocabulary:        return "背词/辨析/词形"
         case .grammar:           return "时态/从句/非谓语"

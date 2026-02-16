@@ -112,30 +112,50 @@ struct ListeningQuestion: PracticeQuestion {
     let explanation: String
 }
 
-// MARK: - 口语题模型
+// MARK: - 口语题模型（多邻国风格：所有题型都有明确期望答案）
 
 struct SpeakingQuestion: PracticeQuestion {
     let id: String
     let type: QuestionType = .speaking
-    let prompt: String              // 朗读/回答内容
-    let referenceText: String       // 参考文本
+    let prompt: String              // 题目提示（中文指令）
+    let referenceText: String       // 期望用户说出的英文文本
+    let translation: String?        // 中文释义（翻译说时显示为题干）
     let category: SpeakingCategory
 }
 
+/// 多邻国风格口语题型
 enum SpeakingCategory: String {
-    case readAloud  = "跟读"
-    case respond    = "对话回答"
-    case retell     = "复述"
-    case describe   = "看图说话"
+    /// 朗读：显示英文句子 → 用户照着读
+    case readAloud      = "朗读句子"
+    /// 翻译说：显示中文 → 用户说出英文翻译
+    case translateSpeak = "翻译并朗读"
+    /// 听后说：先播放音频 + 显示文字 → 用户跟读
+    case listenRepeat   = "听后跟读"
+    /// 补全说：句子缺一部分 → 用户说出完整句子
+    case completeSpeak  = "补全句子"
 
     /// 从 API 返回的英文 key 初始化
     static func from(apiKey: String) -> SpeakingCategory {
         switch apiKey {
-        case "readAloud": return .readAloud
-        case "respond":   return .respond
-        case "retell":    return .retell
-        case "describe":  return .describe
-        default:          return .readAloud
+        case "readAloud":       return .readAloud
+        case "translateSpeak":  return .translateSpeak
+        case "listenRepeat":    return .listenRepeat
+        case "completeSpeak":   return .completeSpeak
+        // 兼容旧数据
+        case "respond":         return .translateSpeak
+        case "retell":          return .listenRepeat
+        case "describe":        return .readAloud
+        default:                return .readAloud
+        }
+    }
+
+    /// 题型图标
+    var icon: String {
+        switch self {
+        case .readAloud:      return "text.bubble"
+        case .translateSpeak: return "character.bubble"
+        case .listenRepeat:   return "ear"
+        case .completeSpeak:  return "text.badge.plus"
         }
     }
 }

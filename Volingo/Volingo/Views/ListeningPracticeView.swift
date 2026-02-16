@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// 听力专项练习（Mock：点击播放显示原文）
+/// 听力专项练习（使用系统 TTS 朗读）
 struct ListeningPracticeView: View {
     let questions: [ListeningQuestion]
     var onAnswer: ((String, Bool) -> Void)? = nil
@@ -16,7 +16,7 @@ struct ListeningPracticeView: View {
     @State private var showExplanation = false
     @State private var correctCount = 0
     @State private var showResult = false
-    @State private var showTranscript = false
+    @StateObject private var audio = AudioService.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,25 +31,38 @@ struct ListeningPracticeView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         let question = questions[currentIndex]
 
-                        // 播放按钮（Mock）
-                        Button(action: { showTranscript = true }) {
-                            HStack {
-                                Image(systemName: showTranscript ? "speaker.wave.3.fill" : "play.circle.fill")
-                                    .font(.largeTitle)
-                                    .foregroundColor(.blue)
-                                VStack(alignment: .leading) {
-                                    Text(showTranscript ? "正在播放…" : "播放听力")
-                                        .font(.headline)
-                                    Text("Mock 模式：无真实音频")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                        // 播放按钮 — 系统 TTS
+                        HStack(spacing: 12) {
+                            Button(action: { audio.playWordPronunciation(question.transcript) }) {
+                                HStack {
+                                    Image(systemName: audio.isPlaying ? "speaker.wave.3.fill" : "play.circle.fill")
+                                        .font(.title2)
+                                        .foregroundColor(.blue)
+                                    Text(audio.isPlaying ? "播放中…" : "播放")
+                                        .font(.subheadline.bold())
                                 }
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Color.blue.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
                             }
+                            .disabled(audio.isPlaying)
+
+                            Button(action: { audio.playWordPronunciation(question.transcript, rate: 0.2) }) {
+                                HStack {
+                                    Image(systemName: "tortoise.fill")
+                                        .font(.title2)
+                                        .foregroundColor(.orange)
+                                    Text("慢速")
+                                        .font(.subheadline.bold())
+                                }
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Color.orange.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .disabled(audio.isPlaying)
                         }
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.blue.opacity(0.08))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
 
                         // 原文仅在提交答案后显示
                         if showExplanation {
@@ -100,6 +113,7 @@ struct ListeningPracticeView: View {
         }
         .navigationTitle("听力专项")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { autoPlayAfterDelay() }
     }
 
     private func optionLabel(_ index: Int) -> String {
@@ -108,13 +122,23 @@ struct ListeningPracticeView: View {
     }
 
     private func nextQuestion() {
+        audio.stopPlaying()
         if currentIndex < questions.count - 1 {
             currentIndex += 1
             selectedIndex = nil
             showExplanation = false
-            showTranscript = false
+            autoPlayAfterDelay()
         } else {
             showResult = true
+        }
+    }
+
+    /// 延迟 0.5 秒后自动播放当前题目音频
+    private func autoPlayAfterDelay() {
+        guard !questions.isEmpty, currentIndex < questions.count else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            guard !showResult, !audio.isPlaying else { return }
+            audio.playWordPronunciation(questions[currentIndex].transcript)
         }
     }
 

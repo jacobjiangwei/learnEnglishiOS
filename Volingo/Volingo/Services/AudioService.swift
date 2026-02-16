@@ -31,7 +31,7 @@ class AudioService: NSObject, ObservableObject {
     }
     
     // 使用系统语音合成播放单词发音
-    func playWordPronunciation(_ word: String) {
+    func playWordPronunciation(_ word: String, rate: Float = 0.5) {
         guard !word.isEmpty else { return }
         
         // 停止当前播放
@@ -42,7 +42,7 @@ class AudioService: NSObject, ObservableObject {
         // 创建语音合成请求
         let utterance = AVSpeechUtterance(string: word)
         utterance.voice = AVSpeechSynthesisVoice(language: "en-US") // 美式英语
-        utterance.rate = 0.45 // 设置语速为适中
+        utterance.rate = rate
         utterance.pitchMultiplier = 1.1 // 增加音调
         utterance.volume = 1.0 // 音量从 0 到 1
         
@@ -117,18 +117,88 @@ class AudioService: NSObject, ObservableObject {
         player?.stop()
         isPlaying = false
     }
-    
-    // 开始录音
-    func startRecording() {
-        // TODO: 实现录音功能
-        print("🎤 开始录音...")
+
+    // MARK: - 录音功能
+
+    private var audioRecorder: AVAudioRecorder?
+    private var audioEngine: AVAudioEngine?
+    @Published var isRecording = false
+    @Published var recordedFileURL: URL?
+
+    /// 录音文件存储路径
+    private var recordingURL: URL {
+        let dir = FileManager.default.temporaryDirectory
+        return dir.appendingPathComponent("volingo_recording.wav")
     }
-    
-    // 停止录音并返回音频数据
-    func stopRecording() -> Data? {
-        // TODO: 实现录音功能
-        print("🎤 停止录音...")
+
+    /// 切换音频会话为录音模式
+    private func setupRecordingSession() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+        } catch {
+            print("❌ 录音会话设置失败: \(error)")
+        }
+    }
+
+    /// 切换回播放会话
+    private func restorePlaybackSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("❌ 恢复播放会话失败: \(error)")
+        }
+    }
+
+    /// 开始录音（使用 AVAudioRecorder）
+    func startRecording() {
+        stopPlaying()
+        setupRecordingSession()
+
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatLinearPCM),
+            AVSampleRateKey: 16000.0,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+        ]
+
+        do {
+            audioRecorder = try AVAudioRecorder(url: recordingURL, settings: settings)
+            audioRecorder?.record()
+            isRecording = true
+            recordedFileURL = nil
+            print("🎤 开始录音...")
+        } catch {
+            print("❌ 开始录音失败: \(error)")
+            isRecording = false
+        }
+    }
+
+    /// 停止录音并返回音频文件 URL
+    @discardableResult
+    func stopRecording() -> URL? {
+        audioRecorder?.stop()
+        audioRecorder = nil
+        isRecording = false
+        restorePlaybackSession()
+
+        if FileManager.default.fileExists(atPath: recordingURL.path) {
+            recordedFileURL = recordingURL
+            print("🎤 录音已保存: \(recordingURL)")
+            return recordingURL
+        }
         return nil
+    }
+
+    /// 播放录音回放
+    func playRecording() {
+        guard let url = recordedFileURL else { return }
+        playLocalAudio(url: url)
     }
 }
 

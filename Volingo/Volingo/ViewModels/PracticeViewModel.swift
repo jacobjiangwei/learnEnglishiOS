@@ -319,6 +319,7 @@ class PracticeViewModel: ObservableObject {
                     id: q.id,
                     prompt: q.prompt,
                     referenceText: q.referenceText,
+                    translation: q.translation,
                     category: SpeakingCategory.from(apiKey: q.category)
                 )
             }

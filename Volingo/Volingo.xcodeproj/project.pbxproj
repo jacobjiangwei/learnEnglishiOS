@@ -412,6 +412,8 @@
 				DEVELOPMENT_TEAM = U3R3R9KG8C;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Volingo 需要使用麦克风进行口语练习录音";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Volingo 需要语音识别来评测你的发音";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -440,6 +442,8 @@
 				DEVELOPMENT_TEAM = U3R3R9KG8C;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Volingo 需要使用麦克风进行口语练习录音";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Volingo 需要语音识别来评测你的发音";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
