@@ -18,7 +18,9 @@ struct OrderingPracticeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if showResult {
+            if questions.isEmpty {
+                emptyView
+            } else if showResult {
                 PracticeResultView(title: "排序题", totalCount: questions.count, correctCount: correctCount)
             } else {
                 PracticeProgressHeader(current: currentIndex, total: questions.count)
@@ -136,10 +138,23 @@ struct OrderingPracticeView: View {
             showResult = true
         }
     }
+
+    private var emptyView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "tray")
+                .font(.largeTitle)
+                .foregroundColor(.secondary)
+            Text("暂无题目")
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 }
 
 #Preview {
     NavigationView {
-        OrderingPracticeView(questions: MockDataFactory.orderingQuestions())
+        OrderingPracticeView(questions: [
+            OrderingQuestion(id: "preview-1", shuffledParts: ["every day", "to school", "I", "go"], correctOrder: [2, 3, 1, 0], explanation: "I go to school every day."),
+        ])
     }
 }

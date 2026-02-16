@@ -22,6 +22,10 @@ public static class ApiEndpoints
 
             var (questions, remaining) = mock.GetQuestions(deviceId, textbookCode, questionType, count ?? 5);
 
+            // 阅读理解用 passages 而非 questions（文档 §3.1）
+            if (questionType == "reading")
+                return Results.Ok(new ReadingQuestionsResponse(questionType, textbookCode, remaining, questions));
+
             return Results.Ok(new QuestionsResponse(questionType, textbookCode, remaining, questions));
         })
         .WithName("GetQuestions")

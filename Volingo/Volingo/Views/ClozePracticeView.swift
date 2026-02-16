@@ -15,11 +15,14 @@ struct ClozePracticeView: View {
     @State private var submitted = false
     @State private var correctCount = 0
     @State private var showResult = false
+    @State private var showHint = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            if showResult {
+            if questions.isEmpty {
+                emptyView
+            } else if showResult {
                 PracticeResultView(title: "填空题", totalCount: questions.count, correctCount: correctCount)
             } else {
                 PracticeProgressHeader(current: currentIndex, total: questions.count)
@@ -32,9 +35,21 @@ struct ClozePracticeView: View {
                             .font(.title3.bold())
 
                         if let hint = question.hint {
-                            Text("提示：\(hint)")
-                                .font(.subheadline)
-                                .foregroundColor(.blue)
+                            if showHint {
+                                Text("💡 提示：\(hint)")
+                                    .font(.subheadline)
+                                    .foregroundColor(.blue)
+                                    .transition(.opacity)
+                            } else if !submitted {
+                                Button {
+                                    withAnimation { showHint = true }
+                                } label: {
+                                    Label("显示提示", systemImage: "lightbulb")
+                                        .font(.subheadline)
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.blue)
+                            }
                         }
 
                         HStack {
@@ -91,14 +106,28 @@ struct ClozePracticeView: View {
             currentIndex += 1
             userAnswer = ""
             submitted = false
+            showHint = false
         } else {
             showResult = true
         }
+    }
+
+    private var emptyView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "tray")
+                .font(.largeTitle)
+                .foregroundColor(.secondary)
+            Text("暂无题目")
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 #Preview {
     NavigationView {
-        ClozePracticeView(questions: MockDataFactory.clozeQuestions())
+        ClozePracticeView(questions: [
+            ClozeQuestion(id: "preview-1", sentence: "I have ___ finished my homework.", answer: "already", hint: "已经", explanation: "already 用于肯定句。"),
+        ])
     }
 }

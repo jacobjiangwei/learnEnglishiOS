@@ -232,8 +232,13 @@ public class MockDataService
     {
         var bank = new Dictionary<string, Dictionary<string, List<object>>>();
 
-        // Generate for a sample textbook
-        var textbookCodes = new[] { "juniorPEP-7a", "juniorPEP-7b", "juniorPEP-8a" };
+        // Generate for sample textbooks (cover all stages for mock)
+        var textbookCodes = new[] {
+            "juniorPEP-7a", "juniorPEP-7b", "juniorPEP-8a",
+            "primaryPEP-3a", "primaryPEP-3b", "primaryPEP-4a", "primaryPEP-4b",
+            "primaryPEP-5a", "primaryPEP-5b", "primaryPEP-6a", "primaryPEP-6b",
+            "seniorPEP-1a", "seniorPEP-1b", "seniorPEP-2a"
+        };
 
         foreach (var code in textbookCodes)
         {
@@ -247,6 +252,8 @@ public class MockDataService
                 ["errorCorrection"] = GenerateErrorCorrection(code, 6),
                 ["sentenceOrdering"] = GenerateOrdering(code, 6),
                 ["listening"] = GenerateListening(code, 8),
+                ["speaking"] = GenerateSpeaking(code, 6),
+                ["writing"] = GenerateWriting(code, 4),
                 ["vocabulary"] = GenerateVocabulary(code, 10),
                 ["grammar"] = GenerateGrammar(code, 8),
             };
@@ -327,7 +334,8 @@ public class MockDataService
                     ["stem"] = "What time does Tom get up?",
                     ["translation"] = "汤姆几点起床？",
                     ["options"] = new[] { "Six o'clock", "Seven o'clock", "Eight o'clock", "Nine o'clock" },
-                    ["correctIndex"] = 1
+                    ["correctIndex"] = 1,
+                    ["explanation"] = "The passage says 'Tom gets up at seven o'clock every morning.'"
                 },
                 new Dictionary<string, object>
                 {
@@ -335,7 +343,8 @@ public class MockDataService
                     ["stem"] = "How does Tom go to school?",
                     ["translation"] = "汤姆怎么去学校？",
                     ["options"] = new[] { "By bike", "By bus", "On foot", "By car" },
-                    ["correctIndex"] = 1
+                    ["correctIndex"] = 1,
+                    ["explanation"] = "The passage says 'goes to school by bus.'"
                 }
             }
         }).ToList();
@@ -360,7 +369,9 @@ public class MockDataService
                 ["sourceText"] = $"{source} (#{i + 1})",
                 ["direction"] = "enToZh",
                 ["referenceAnswer"] = reference,
-                ["keywords"] = new[] { "teacher", "homework", "weather" }
+                ["keywords"] = new[] { "teacher", "homework", "weather" },
+                ["explanation"] = "Pay attention to the key vocabulary and sentence structure.",
+                ["explanationTranslation"] = "注意关键词汇和句型结构。"
             };
         }).ToList();
     }
@@ -373,11 +384,13 @@ public class MockDataService
             ["questionType"] = "rewriting",
             ["textbookCode"] = textbookCode,
             ["originalSentence"] = $"He goes to school by bus. (#{i + 1})",
-            ["translation"] = "他坐公交去学校。",
+            ["originalTranslation"] = "他坐公交去学校。",
             ["instruction"] = "Change to a question.",
             ["instructionTranslation"] = "改为疑问句。",
             ["referenceAnswer"] = "Does he go to school by bus?",
-            ["referenceTranslation"] = "他坐公交去学校吗？"
+            ["referenceTranslation"] = "他坐公交去学校吗？",
+            ["explanation"] = "To form a yes/no question with 'goes', use 'Does he go...?'",
+            ["explanationTranslation"] = "要将含有 'goes' 的陈述句变为一般疑问句，使用 'Does he go...?'"
         }).ToList();
     }
 
@@ -390,8 +403,8 @@ public class MockDataService
             ["textbookCode"] = textbookCode,
             ["sentence"] = $"She don't like apples. (#{i + 1})",
             ["translation"] = "她不喜欢苹果。",
-            ["errorWord"] = "don't",
-            ["correctWord"] = "doesn't",
+            ["errorRange"] = "don't",
+            ["correction"] = "doesn't",
             ["explanation"] = "Third person singular uses 'doesn't'.",
             ["explanationTranslation"] = "第三人称单数用 'doesn't'。"
         }).ToList();
@@ -404,10 +417,12 @@ public class MockDataService
             ["id"] = Guid.NewGuid().ToString(),
             ["questionType"] = "sentenceOrdering",
             ["textbookCode"] = textbookCode,
-            ["words"] = new[] { "school", "I", "to", "go", "every day" },
+            ["shuffledParts"] = new[] { "school", "I", "to", "go", "every day" },
             ["correctOrder"] = new[] { 1, 3, 2, 0, 4 },
             ["correctSentence"] = $"I go to school every day. (#{i + 1})",
-            ["translation"] = "我每天去上学。"
+            ["translation"] = "我每天去上学。",
+            ["explanation"] = "The correct order forms: I go to school every day.",
+            ["explanationTranslation"] = "正确的语序是：I go to school every day."
         }).ToList();
     }
 
@@ -424,7 +439,9 @@ public class MockDataService
             ["stem"] = "What does the speaker say?",
             ["stemTranslation"] = "说话人说了什么？",
             ["options"] = new[] { "Good morning", "Good evening", "Good night", "Goodbye" },
-            ["correctIndex"] = 0
+            ["correctIndex"] = 0,
+            ["explanation"] = "The speaker greets with 'Good morning'.",
+            ["explanationTranslation"] = "说话人用 'Good morning' 打招呼。"
         }).ToList();
     }
 
@@ -452,7 +469,10 @@ public class MockDataService
                 ["options"] = new[] { meaning, "放弃", "忽视", "破坏" },
                 ["correctIndex"] = 0,
                 ["exampleSentence"] = example,
-                ["exampleTranslation"] = exampleTrans
+                ["exampleTranslation"] = exampleTrans,
+                ["explanation"] = $"'{word}' means '{meaning}'.",
+                ["explanationTranslation"] = $"'{word}' 的意思是 '{meaning}'。",
+                ["category"] = "meaning"
             };
         }).ToList();
     }
@@ -472,6 +492,67 @@ public class MockDataService
             ["grammarPointTranslation"] = "一般现在时 - 第三人称单数",
             ["explanation"] = "Third person singular adds -es to verbs ending in -y.",
             ["explanationTranslation"] = "第三人称单数，以 -y 结尾的动词变 -ies。"
+        }).ToList();
+    }
+
+    private static List<object> GenerateSpeaking(string textbookCode, int count)
+    {
+        var items = new (string Prompt, string Reference, string Translation, string Category)[] {
+            ("Please read the following sentence aloud:", "The weather is beautiful today, isn't it?", "今天天气真好，不是吗？", "readAloud"),
+            ("Listen and repeat:", "I would like a cup of coffee, please.", "我想要一杯咖啡，谢谢。", "readAloud"),
+            ("Answer the following question:", "What do you usually do on weekends?", "你周末通常做什么？", "respond"),
+            ("Retell the story in your own words:", "A boy found a lost puppy and took it home. His mother helped him find the owner.", "一个男孩发现了一只走失的小狗并把它带回了家。他的妈妈帮他找到了主人。", "retell"),
+            ("Describe what you see in the picture:", "There is a park with children playing on the swings and slides.", "公园里有孩子们在荡秋千和滑滑梯。", "describe"),
+        };
+
+        return Enumerable.Range(0, count).Select(i =>
+        {
+            var (prompt, reference, translation, category) = items[i % items.Length];
+            return (object)new Dictionary<string, object>
+            {
+                ["id"] = Guid.NewGuid().ToString(),
+                ["questionType"] = "speaking",
+                ["textbookCode"] = textbookCode,
+                ["prompt"] = $"{prompt} (#{i + 1})",
+                ["referenceText"] = reference,
+                ["translation"] = translation,
+                ["category"] = category
+            };
+        }).ToList();
+    }
+
+    private static List<object> GenerateWriting(string textbookCode, int count)
+    {
+        var items = new (string Prompt, string PromptTranslation, string Category, int MinWords, int MaxWords, string Reference, string ReferenceTranslation)[] {
+            ("Write a short paragraph about your favorite hobby.", "写一段关于你最喜欢的爱好的短文。", "paragraph", 50, 100,
+             "My favorite hobby is reading. I enjoy it because it allows me to explore different worlds and learn new things. I usually read for about an hour every evening before bed.",
+             "我最喜欢的爱好是阅读。我喜欢它，因为它让我探索不同的世界并学习新事物。我通常每天晚上睡前读大约一个小时的书。"),
+            ("Write a sentence using the word 'beautiful'.", "用 'beautiful' 这个词写一个句子。", "sentence", 5, 20,
+             "The sunset over the ocean was truly beautiful.",
+             "海上的日落真的很美。"),
+            ("Write a short essay about the importance of learning English.", "写一篇关于学习英语重要性的短文。", "essay", 80, 150,
+             "Learning English is important because it is a global language. It helps us communicate with people from different countries and opens up many opportunities for work and study.",
+             "学习英语很重要，因为它是一门全球性语言。它帮助我们与来自不同国家的人交流，并为工作和学习开辟了许多机会。"),
+            ("Write a letter to your pen pal introducing yourself.", "写一封信给你的笔友，介绍你自己。", "application", 60, 120,
+             "Dear Tom, My name is Li Ming. I am 14 years old and I live in Beijing. I like playing basketball and reading books. I hope we can be good friends. Best wishes, Li Ming",
+             "亲爱的汤姆，我叫李明。我14岁，住在北京。我喜欢打篮球和读书。希望我们能成为好朋友。祝好，李明"),
+        };
+
+        return Enumerable.Range(0, count).Select(i =>
+        {
+            var (prompt, promptTrans, category, minWords, maxWords, reference, refTrans) = items[i % items.Length];
+            return (object)new Dictionary<string, object>
+            {
+                ["id"] = Guid.NewGuid().ToString(),
+                ["questionType"] = "writing",
+                ["textbookCode"] = textbookCode,
+                ["prompt"] = $"{prompt} (#{i + 1})",
+                ["promptTranslation"] = promptTrans,
+                ["category"] = category,
+                ["wordLimit"] = new Dictionary<string, object> { ["min"] = minWords, ["max"] = maxWords },
+                ["referenceAnswer"] = reference,
+                ["referenceTranslation"] = refTrans
+            };
         }).ToList();
     }
 }

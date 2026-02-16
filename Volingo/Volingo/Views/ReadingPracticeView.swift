@@ -19,7 +19,9 @@ struct ReadingPracticeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if showResult {
+            if passage.questions.isEmpty {
+                emptyView
+            } else if showResult {
                 PracticeResultView(title: "阅读理解", totalCount: passage.questions.count, correctCount: correctCount)
             } else {
                 PracticeProgressHeader(current: currentIndex, total: passage.questions.count)
@@ -96,10 +98,28 @@ struct ReadingPracticeView: View {
             showResult = true
         }
     }
+
+    private var emptyView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "tray")
+                .font(.largeTitle)
+                .foregroundColor(.secondary)
+            Text("暂无题目")
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 }
 
 #Preview {
     NavigationView {
-        ReadingPracticeView(passage: MockDataFactory.readingPassage())
+        ReadingPracticeView(passage: ReadingPassage(
+            id: "preview-1",
+            title: "The History of Tea",
+            content: "Tea is one of the most popular drinks in the world.",
+            questions: [
+                ReadingQuestion(id: "preview-q1", stem: "What is tea?", options: ["A food", "A drink", "A place", "A person"], correctIndex: 1, explanation: "Tea is a drink."),
+            ]
+        ))
     }
 }

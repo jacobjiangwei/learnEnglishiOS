@@ -120,6 +120,14 @@ struct ScenarioPracticeView: View {
 
 #Preview {
     NavigationView {
-        ScenarioPracticeView(questions: MockDataFactory.scenarioQuestions(for: .scenarioDaily))
+        ScenarioPracticeView(questions: [
+            ScenarioQuestion(
+                id: "preview-1", type: .scenarioDaily,
+                scenarioTitle: "在咖啡店", context: "你走进一家咖啡店。",
+                dialogueLines: [DialogueLine(id: "dl-1", speaker: "Staff", text: "What can I get for you?")],
+                userPrompt: "你想要一杯拿铁",
+                options: ["A latte, please.", "Give me food.", "Where is the bus?", "I don't know."],
+                correctIndex: 0, referenceResponse: "A latte, please."),
+        ])
     }
 }

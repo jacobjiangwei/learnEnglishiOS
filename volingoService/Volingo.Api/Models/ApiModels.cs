@@ -5,6 +5,7 @@ public record ErrorResponse(string Error);
 
 // ── Practice: Questions ──
 public record QuestionsResponse(string QuestionType, string TextbookCode, int Remaining, List<object> Questions);
+public record ReadingQuestionsResponse(string QuestionType, string TextbookCode, int Remaining, List<object> Passages);
 
 // ── Practice: Today Package ──
 public record TodayPackageResponse(string Date, string TextbookCode, int EstimatedMinutes, List<PackageItem> Items);

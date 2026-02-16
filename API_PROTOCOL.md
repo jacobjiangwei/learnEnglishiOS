@@ -280,7 +280,8 @@ LIMIT :count;
   "translation": "'abandon' 这个词的意思是 ___。",
   "options": ["to keep", "to give up", "to find", "to carry"],
   "correctIndex": 1,
-  "explanation": "abandon 意为'放弃、抛弃'。"
+  "explanation": "abandon 意为'放弃、抛弃'。",
+  "explanationTranslation": "abandon means 'to give up or desert'."
 }
 ```
 
@@ -291,6 +292,7 @@ LIMIT :count;
 | `options` | string[] | ✅ | 选项数组，通常 4 个 |
 | `correctIndex` | int | ✅ | 正确答案在 options 中的索引（0-based） |
 | `explanation` | string | ✅ | 答案解析 |
+| `explanationTranslation` | string | ❌ | 解析的中文翻译 |
 
 ---
 
@@ -303,9 +305,10 @@ LIMIT :count;
   "textbookCode": "juniorPEP-7a",
   "sentence": "I have ___ finished my homework.",
   "translation": "我已经完成了我的作业。",
-  "answer": "already",
-  "hint": "已经",
-  "explanation": "already 用于肯定句中，表示'已经'。"
+  "correctAnswer": "already",
+  "hints": ["已经"],
+  "explanation": "already 用于肯定句中，表示'已经'。",
+  "explanationTranslation": "'already' is used in affirmative sentences to mean 'already'."
 }
 ```
 
@@ -313,9 +316,10 @@ LIMIT :count;
 |------|------|------|------|
 | `sentence` | string | ✅ | 含 `___` 占位符的句子 |
 | `translation` | string | ✅ | **填完空后**完整句子的中文翻译 |
-| `answer` | string | ✅ | 正确答案文本 |
-| `hint` | string | ❌ | 中文提示（可为 null） |
+| `correctAnswer` | string | ✅ | 正确答案文本 |
+| `hints` | string[] | ❌ | 提示词数组（可为 null 或空数组） |
 | `explanation` | string | ✅ | 答案解析 |
+| `explanationTranslation` | string | ❌ | 解析的中文翻译 |
 
 ---
 
@@ -363,6 +367,8 @@ LIMIT :count;
 | `questions[].correctIndex` | int | ✅ | 正确答案索引 |
 | `questions[].explanation` | string | ✅ | 解析 |
 
+> **说明**：每道阅读子题都包含 `explanation`，用于答错后展示解析。
+
 ---
 
 ### 2.4 翻译题 (translation)
@@ -375,20 +381,22 @@ LIMIT :count;
   "questionType": "translation",
   "textbookCode": "juniorPEP-8b",
   "sourceText": "科技改变了我们的生活方式。",
-  "sourceLanguage": "zh",
+  "direction": "zhToEn",
   "referenceAnswer": "Technology has changed our way of life.",
   "keywords": ["technology", "changed", "way of life"],
-  "explanation": "注意时态用现在完成时 has changed。"
+  "explanation": "注意时态用现在完成时 has changed。",
+  "explanationTranslation": "Pay attention to using the present perfect tense 'has changed'."
 }
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `sourceText` | string | ✅ | 原文内容 |
-| `sourceLanguage` | string | ✅ | 原文语言：`"zh"` 或 `"en"` |
+| `direction` | string | ✅ | 翻译方向：`"zhToEn"`（中译英）或 `"enToZh"`（英译中） |
 | `referenceAnswer` | string | ✅ | 参考译文 |
 | `keywords` | string[] | ✅ | 用户答案必须包含的关键词（用于前端简单判分） |
 | `explanation` | string | ✅ | 翻译要点解析 |
+| `explanationTranslation` | string | ❌ | 解析的中文翻译 |
 
 ---
 
@@ -402,9 +410,11 @@ LIMIT :count;
   "originalSentence": "He is too young to go to school.",
   "originalTranslation": "他太小了，不能上学。",
   "instruction": "用 so...that 改写",
+  "instructionTranslation": "Rewrite using so...that",
   "referenceAnswer": "He is so young that he can't go to school.",
   "referenceTranslation": "他是如此年幼以至于不能上学。",
-  "explanation": "too...to 和 so...that...not 可以互换表达。"
+  "explanation": "too...to 和 so...that...not 可以互换表达。",
+  "explanationTranslation": "'too...to' and 'so...that...not' are interchangeable expressions."
 }
 ```
 
@@ -413,9 +423,11 @@ LIMIT :count;
 | `originalSentence` | string | ✅ | 原始句子（英文） |
 | `originalTranslation` | string | ✅ | 原句中文翻译 |
 | `instruction` | string | ✅ | 改写要求/指令 |
+| `instructionTranslation` | string | ❌ | 改写指令的翻译 |
 | `referenceAnswer` | string | ✅ | 参考答案 |
 | `referenceTranslation` | string | ✅ | 参考答案的中文翻译 |
 | `explanation` | string | ✅ | 解析 |
+| `explanationTranslation` | string | ❌ | 解析的翻译 |
 
 ---
 
@@ -430,7 +442,8 @@ LIMIT :count;
   "translation": "她不喜欢苹果。",
   "errorRange": "don't",
   "correction": "doesn't",
-  "explanation": "第三人称单数主语 She 后应该用 doesn't。"
+  "explanation": "第三人称单数主语 She 后应该用 doesn't。",
+  "explanationTranslation": "After third person singular subject 'She', use 'doesn't'."
 }
 ```
 
@@ -441,6 +454,7 @@ LIMIT :count;
 | `errorRange` | string | ✅ | 错误部分的原文文本（前端用于高亮匹配） |
 | `correction` | string | ✅ | 正确写法 |
 | `explanation` | string | ✅ | 解析 |
+| `explanationTranslation` | string | ❌ | 解析的翻译 |
 
 ---
 
@@ -453,8 +467,10 @@ LIMIT :count;
   "textbookCode": "primaryPEP-5a",
   "shuffledParts": ["going", "I", "am", "to school"],
   "correctOrder": [1, 2, 0, 3],
+  "correctSentence": "I am going to school.",
   "translation": "我正要去学校。",
-  "explanation": "正确语序为 I am going to school."
+  "explanation": "正确语序为 I am going to school.",
+  "explanationTranslation": "The correct order is: I am going to school."
 }
 ```
 
@@ -462,8 +478,10 @@ LIMIT :count;
 |------|------|------|------|
 | `shuffledParts` | string[] | ✅ | 打乱的词/短语片段 |
 | `correctOrder` | int[] | ✅ | 正确顺序的索引数组，指向 shuffledParts 的下标 |
+| `correctSentence` | string | ❌ | 正确排列后的完整句子（用于展示答案） |
 | `translation` | string | ✅ | 正确排列后完整句子的中文翻译 |
 | `explanation` | string | ✅ | 解析 |
+| `explanationTranslation` | string | ❌ | 解析的翻译 |
 
 ---
 
@@ -481,7 +499,8 @@ LIMIT :count;
   "stemTranslation": "这节课的主题是什么？",
   "options": ["History", "The solar system", "English grammar", "Music"],
   "correctIndex": 1,
-  "explanation": "原文明确说 learn about the solar system。"
+  "explanation": "原文明确说 learn about the solar system。",
+  "explanationTranslation": "The passage clearly says 'learn about the solar system'."
 }
 ```
 
@@ -495,6 +514,7 @@ LIMIT :count;
 | `options` | string[] | ✅ | 选项数组 |
 | `correctIndex` | int | ✅ | 正确答案索引 |
 | `explanation` | string | ✅ | 解析 |
+| `explanationTranslation` | string | ❌ | 解析的翻译 |
 
 ---
 
@@ -566,7 +586,11 @@ LIMIT :count;
   "options": ["afraid", "brave", "shy", "lazy"],
   "correctIndex": 1,
   "explanation": "brave 意为'勇敢的'。",
-  "category": "meaning"
+  "explanationTranslation": "'brave' means 'courageous'.",
+  "category": "meaning",
+  "meaning": "勇敢的",
+  "exampleSentence": "The brave firefighter saved the child.",
+  "exampleTranslation": "勇敢的消防员救了那个孩子。"
 }
 ```
 
@@ -574,12 +598,16 @@ LIMIT :count;
 |------|------|------|------|
 | `word` | string | ✅ | 目标词汇 |
 | `phonetic` | string | ❌ | 音标（可为 null） |
+| `meaning` | string | ❌ | 词义（中文） |
 | `stem` | string | ✅ | 题干 |
 | `translation` | string | ✅ | 题干的中文翻译 |
 | `options` | string[] | ✅ | 选项 |
 | `correctIndex` | int | ✅ | 正确答案索引 |
 | `explanation` | string | ✅ | 解析 |
+| `explanationTranslation` | string | ❌ | 解析的翻译 |
 | `category` | string | ✅ | 词汇子类型，见枚举 `vocabularyCategory` |
+| `exampleSentence` | string | ❌ | 例句（英文） |
+| `exampleTranslation` | string | ❌ | 例句的中文翻译 |
 
 ---
 
@@ -595,7 +623,9 @@ LIMIT :count;
   "options": ["go", "goes", "going", "gone"],
   "correctIndex": 1,
   "explanation": "主语 She 是第三人称单数，一般现在时动词加 -es。",
-  "topic": "tense"
+  "explanationTranslation": "The subject 'She' is third person singular, so the verb takes -es in simple present.",
+  "grammarPoint": "tense",
+  "grammarPointTranslation": "时态"
 }
 ```
 
@@ -606,7 +636,9 @@ LIMIT :count;
 | `options` | string[] | ✅ | 选项 |
 | `correctIndex` | int | ✅ | 正确答案索引 |
 | `explanation` | string | ✅ | 解析 |
-| `topic` | string | ✅ | 语法主题，见枚举 `grammarTopic` |
+| `explanationTranslation` | string | ❌ | 解析的翻译 |
+| `grammarPoint` | string | ✅ | 语法主题，见枚举 `grammarTopic` |
+| `grammarPointTranslation` | string | ❌ | 语法主题的中文翻译 |
 
 ---
 

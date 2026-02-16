@@ -19,7 +19,9 @@ struct ListeningPracticeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if showResult {
+            if questions.isEmpty {
+                emptyView
+            } else if showResult {
                 PracticeResultView(title: "听力专项", totalCount: questions.count, correctCount: correctCount)
             } else {
                 PracticeProgressHeader(current: currentIndex, total: questions.count)
@@ -31,13 +33,13 @@ struct ListeningPracticeView: View {
                         // 播放按钮（Mock）
                         Button(action: { showTranscript = true }) {
                             HStack {
-                                Image(systemName: "play.circle.fill")
+                                Image(systemName: showTranscript ? "speaker.wave.3.fill" : "play.circle.fill")
                                     .font(.largeTitle)
                                     .foregroundColor(.blue)
                                 VStack(alignment: .leading) {
-                                    Text("播放听力")
+                                    Text(showTranscript ? "正在播放…" : "播放听力")
                                         .font(.headline)
-                                    Text("点击播放（Mock：显示原文）")
+                                    Text("Mock 模式：无真实音频")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -48,7 +50,8 @@ struct ListeningPracticeView: View {
                         .background(Color.blue.opacity(0.08))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
 
-                        if showTranscript {
+                        // 原文仅在提交答案后显示
+                        if showExplanation {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("听力原文")
                                     .font(.caption.bold())
@@ -111,10 +114,23 @@ struct ListeningPracticeView: View {
             showResult = true
         }
     }
+
+    private var emptyView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "tray")
+                .font(.largeTitle)
+                .foregroundColor(.secondary)
+            Text("暂无题目")
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 }
 
 #Preview {
     NavigationView {
-        ListeningPracticeView(questions: MockDataFactory.listeningQuestions())
+        ListeningPracticeView(questions: [
+            ListeningQuestion(id: "preview-1", audioURL: nil, transcript: "Good morning, class.", stem: "What time of day is it?", options: ["Morning", "Afternoon", "Evening", "Night"], correctIndex: 0, explanation: "Good morning 表示早上好。"),
+        ])
     }
 }

@@ -7,18 +7,24 @@
 
 import Foundation
 
-// MARK: - 网络服务
+// MARK: - 网络服务（已迁移到 APIService.swift）
+// NetworkService 保留为兼容层，新的 API 调用请使用 APIService.shared
 class NetworkService {
     static let shared = NetworkService()
     private let session: URLSession
-    private let baseURL = "https://api.volingo.app" // TODO: 替换为实际域名
-    
+
+    #if DEBUG
+    private let baseURL = "http://localhost:5174"
+    #else
+    private let baseURL = "https://api.volingo.app"
+    #endif
+
     private init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         self.session = URLSession(configuration: config)
     }
-    
+
     /// 构建带 X-Device-Id 公共 Header 的 URLRequest
     func makeRequest(path: String, method: String = "GET", body: Data? = nil) -> URLRequest {
         var request = URLRequest(url: URL(string: baseURL + path)!)
@@ -30,26 +36,6 @@ class NetworkService {
         }
         return request
     }
-    
-    // TODO: 实现网络请求逻辑
-    func analyzeWriting(_ text: String) async throws -> [WritingFeedback] {
-        // 发送写作文本到后台分析
-        return []
-    }
-    
-    func uploadAudio(_ audioData: Data) async throws -> AudioAnalysisResult {
-        // 上传音频进行语音评分
-        return AudioAnalysisResult(score: 0, feedback: "")
-    }
-    
-    func syncUserData(_ userProfile: UserProfile) async throws {
-        // 同步用户数据到云端
-    }
-}
-
-struct AudioAnalysisResult {
-    let score: Double
-    let feedback: String
 }
 
 // MARK: - 存储服务

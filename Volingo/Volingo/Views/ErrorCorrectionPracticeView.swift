@@ -18,7 +18,9 @@ struct ErrorCorrectionPracticeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if showResult {
+            if questions.isEmpty {
+                emptyView
+            } else if showResult {
                 PracticeResultView(title: "纠错题", totalCount: questions.count, correctCount: correctCount)
             } else {
                 PracticeProgressHeader(current: currentIndex, total: questions.count)
@@ -131,10 +133,23 @@ struct ErrorCorrectionPracticeView: View {
             showResult = true
         }
     }
+
+    private var emptyView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "tray")
+                .font(.largeTitle)
+                .foregroundColor(.secondary)
+            Text("暂无题目")
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 }
 
 #Preview {
     NavigationView {
-        ErrorCorrectionPracticeView(questions: MockDataFactory.errorCorrectionQuestions())
+        ErrorCorrectionPracticeView(questions: [
+            ErrorCorrectionQuestion(id: "preview-1", sentence: "She don't like apples.", errorRange: "don't", correction: "doesn't", explanation: "第三人称用 doesn't。"),
+        ])
     }
 }

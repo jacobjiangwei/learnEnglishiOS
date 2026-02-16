@@ -146,6 +146,14 @@ struct TodayPackageCardView: View {
 }
 
 #Preview {
-    TodayPackageCardView(package: .mock())
-        .padding()
+    TodayPackageCardView(package: TodayPackage(
+        date: Date(),
+        level: "juniorPEP-7a",
+        items: [
+            PackageItem(type: .multipleChoice, count: 5, weight: 0.4),
+            PackageItem(type: .cloze, count: 3, weight: 0.3),
+        ],
+        estimatedMinutes: 10
+    ))
+    .padding()
 }

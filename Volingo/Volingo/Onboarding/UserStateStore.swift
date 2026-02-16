@@ -102,4 +102,14 @@ final class UserStateStore: ObservableObject {
     private func save() {
         try? StorageService.shared.saveToFile(userState, filename: storageFile)
     }
+
+    /// 当前教材编码，用于 API 请求（如 "juniorPEP-7a"）
+    var currentTextbookCode: String? {
+        guard let textbook = userState.selectedTextbook,
+              let level = userState.confirmedLevel ?? userState.selectedLevel else {
+            return userState.selectedTextbook?.seriesCode
+        }
+        // 默认上学期
+        return textbook.code(for: level, term: .first)
+    }
 }

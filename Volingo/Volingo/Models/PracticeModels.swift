@@ -41,6 +41,37 @@ enum QuestionType: String, Codable, CaseIterable, Identifiable {
     case timedDrill         = "提速训练"
     
     var id: String { rawValue }
+
+    /// API 通信用的英文标识（对齐 API_PROTOCOL.md）
+    var apiKey: String {
+        switch self {
+        case .multipleChoice:    return "multipleChoice"
+        case .cloze:             return "cloze"
+        case .reading:           return "reading"
+        case .translation:       return "translation"
+        case .rewriting:         return "rewriting"
+        case .errorCorrection:   return "errorCorrection"
+        case .sentenceOrdering:  return "sentenceOrdering"
+        case .listening:         return "listening"
+        case .speaking:          return "speaking"
+        case .writing:           return "writing"
+        case .vocabulary:        return "vocabulary"
+        case .grammar:           return "grammar"
+        case .scenarioDaily:     return "scenarioDaily"
+        case .scenarioCampus:    return "scenarioCampus"
+        case .scenarioWorkplace: return "scenarioWorkplace"
+        case .scenarioTravel:    return "scenarioTravel"
+        case .quickSprint:       return "quickSprint"
+        case .errorReview:       return "errorReview"
+        case .randomChallenge:   return "randomChallenge"
+        case .timedDrill:        return "timedDrill"
+        }
+    }
+
+    /// 从 API 英文标识构造
+    static func from(apiKey: String) -> QuestionType? {
+        allCases.first { $0.apiKey == apiKey }
+    }
     
     /// 题型所属分组
     var category: TrainingCategory {
@@ -188,43 +219,4 @@ struct TodayPackage: Identifiable {
     }
 }
 
-// MARK: - 用户首页进度
 
-/// 首页轻量进度
-struct HomeProgress {
-    let weeklyQuestionsDone: Int
-    let streak: Int
-    let todayErrorCount: Int
-    let weakTypes: [QuestionType]
-}
-
-// MARK: - Mock 数据
-
-extension TodayPackage {
-    /// 生成今日推荐套餐的 mock 数据
-    static func mock(level: String = "初二") -> TodayPackage {
-        TodayPackage(
-            date: Date(),
-            level: level,
-            items: [
-                PackageItem(type: .multipleChoice, count: 10, weight: 0.35),
-                PackageItem(type: .cloze,          count: 5,  weight: 0.20),
-                PackageItem(type: .reading,        count: 3,  weight: 0.20),
-                PackageItem(type: .listening,      count: 3,  weight: 0.15),
-                PackageItem(type: .vocabulary,     count: 5,  weight: 0.10),
-            ],
-            estimatedMinutes: 15
-        )
-    }
-}
-
-extension HomeProgress {
-    static func mock() -> HomeProgress {
-        HomeProgress(
-            weeklyQuestionsDone: 87,
-            streak: 5,
-            todayErrorCount: 4,
-            weakTypes: [.cloze, .listening]
-        )
-    }
-}

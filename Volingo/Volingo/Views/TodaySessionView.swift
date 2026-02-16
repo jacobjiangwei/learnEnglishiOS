@@ -48,13 +48,22 @@ struct TodaySessionView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             AnalyticsService.shared.trackScreenView("TodaySessionView")
-            AnalyticsService.shared.trackTodayPackageStarted(textbookCode: "")
+            AnalyticsService.shared.trackTodayPackageStarted(textbookCode: package.level)
         }
     }
 }
 
 #Preview {
     NavigationView {
-        TodaySessionView(package: .mock())
+        TodaySessionView(package: TodayPackage(
+            date: Date(),
+            level: "juniorPEP-7a",
+            items: [
+                PackageItem(type: .multipleChoice, count: 5, weight: 0.4),
+                PackageItem(type: .cloze, count: 3, weight: 0.3),
+            ],
+            estimatedMinutes: 10
+        ))
+        .environmentObject(UserStateStore())
     }
 }

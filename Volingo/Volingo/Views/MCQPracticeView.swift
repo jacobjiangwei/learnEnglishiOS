@@ -19,7 +19,9 @@ struct MCQPracticeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if showResult {
+            if questions.isEmpty {
+                emptyView
+            } else if showResult {
                 PracticeResultView(title: title, totalCount: questions.count, correctCount: correctCount)
             } else {
                 PracticeProgressHeader(current: currentIndex, total: questions.count)
@@ -76,10 +78,23 @@ struct MCQPracticeView: View {
             showResult = true
         }
     }
+
+    private var emptyView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "tray")
+                .font(.largeTitle)
+                .foregroundColor(.secondary)
+            Text("暂无题目")
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 }
 
 #Preview {
     NavigationView {
-        MCQPracticeView(title: "选择题", questions: MockDataFactory.mcqQuestions())
+        MCQPracticeView(title: "选择题", questions: [
+            MCQQuestion(id: "preview-1", stem: "The past tense of 'go' is ___.", options: ["goed", "went", "gone", "going"], correctIndex: 1, explanation: "go 的过去式是 went。"),
+        ])
     }
 }

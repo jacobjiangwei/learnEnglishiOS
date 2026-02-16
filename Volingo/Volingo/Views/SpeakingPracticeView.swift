@@ -18,7 +18,16 @@ struct SpeakingPracticeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if showResult {
+            if questions.isEmpty {
+                VStack(spacing: 16) {
+                    Image(systemName: "mic.slash")
+                        .font(.largeTitle)
+                        .foregroundColor(.secondary)
+                    Text("暂无口语题目")
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if showResult {
                 PracticeResultView(title: "口语专项", totalCount: questions.count, correctCount: questions.count)
             } else {
                 PracticeProgressHeader(current: currentIndex, total: questions.count)
@@ -40,12 +49,14 @@ struct SpeakingPracticeView: View {
                         Text(question.prompt)
                             .font(.title3.bold())
 
-                        // 参考文本
-                        Text(question.referenceText)
-                            .font(.body)
-                            .padding()
-                            .background(Color(.secondarySystemGroupedBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        // 参考文本（朗读题直接显示，其他题型录音后显示）
+                        if question.category == .readAloud {
+                            Text(question.referenceText)
+                                .font(.body)
+                                .padding()
+                                .background(Color(.secondarySystemGroupedBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
 
                         // 录音按钮（Mock）
                         Button(action: {
@@ -72,6 +83,20 @@ struct SpeakingPracticeView: View {
 
                         // Mock 评分
                         if showReference {
+                            // 非朗读题：录音后展示参考答案
+                            if question.category != .readAloud {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("参考答案")
+                                        .font(.caption.bold())
+                                        .foregroundColor(.secondary)
+                                    Text(question.referenceText)
+                                        .font(.body)
+                                }
+                                .padding()
+                                .background(Color(.secondarySystemGroupedBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Mock 评分：85/100")
                                     .font(.headline)
@@ -117,6 +142,8 @@ struct SpeakingPracticeView: View {
 
 #Preview {
     NavigationView {
-        SpeakingPracticeView(questions: MockDataFactory.speakingQuestions())
+        SpeakingPracticeView(questions: [
+            SpeakingQuestion(id: "preview-1", prompt: "请朗读以下句子：", referenceText: "The weather is nice today.", category: .readAloud),
+        ])
     }
 }
