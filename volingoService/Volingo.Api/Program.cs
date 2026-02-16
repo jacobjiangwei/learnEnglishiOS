@@ -3,11 +3,15 @@ using System.Text.Json.Serialization;
 using Microsoft.Azure.Cosmos;
 using Scalar.AspNetCore;
 using Volingo.Api.Extensions;
+using Volingo.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Aspire service defaults (health checks, telemetry, resilience)
 builder.AddServiceDefaults();
+
+// Mock data service (in-memory, singleton)
+builder.Services.AddSingleton<MockDataService>();
 
 // Cosmos DB — manual registration (emulator uses Gateway mode)
 var cosmosConnectionString = builder.Configuration.GetConnectionString("cosmos");
@@ -57,8 +61,13 @@ if (!string.IsNullOrEmpty(cosmosConnectionString))
 // ── Root ──
 app.MapGet("/", () => Results.Ok(new { service = "Volingo API", version = "1.0.0", status = "running" }));
 
-// ── Cosmos DB status ──
-app.MapGet("/api/v1/db/status", async (CosmosClient cosmos) =>
+// ── Volingo API endpoints (8 endpoints) ──
+app.MapVolingoEndpoints();
+
+// ── Cosmos DB status (only if Cosmos is configured) ──
+if (!string.IsNullOrEmpty(cosmosConnectionString))
+{
+    app.MapGet("/api/v1/db/status", async (CosmosClient cosmos) =>
 {
     try
     {
@@ -86,5 +95,6 @@ app.MapGet("/api/v1/db/status", async (CosmosClient cosmos) =>
         return Results.Json(new { status = "error", message = ex.Message }, statusCode: 500);
     }
 });
+}
 
 app.Run();

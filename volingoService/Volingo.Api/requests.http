@@ -1,0 +1,151 @@
+@host = http://localhost:5174
+@deviceId = test-device-001
+@textbookCode = juniorPEP-7a
+
+### ──────────────────────────────────────
+### 1. 获取练习题目 — 选择题
+### ──────────────────────────────────────
+
+GET {{host}}/api/v1/practice/questions?questionType=multipleChoice&textbookCode={{textbookCode}}&count=3
+X-Device-Id: {{deviceId}}
+
+### 1b. 获取练习题目 — 完形填空
+GET {{host}}/api/v1/practice/questions?questionType=cloze&textbookCode={{textbookCode}}&count=3
+X-Device-Id: {{deviceId}}
+
+### 1c. 获取练习题目 — 阅读理解
+GET {{host}}/api/v1/practice/questions?questionType=reading&textbookCode={{textbookCode}}&count=2
+X-Device-Id: {{deviceId}}
+
+### 1d. 获取练习题目 — 翻译
+GET {{host}}/api/v1/practice/questions?questionType=translation&textbookCode={{textbookCode}}&count=3
+X-Device-Id: {{deviceId}}
+
+### 1e. 获取练习题目 — 句子改写
+GET {{host}}/api/v1/practice/questions?questionType=rewriting&textbookCode={{textbookCode}}&count=3
+X-Device-Id: {{deviceId}}
+
+### 1f. 获取练习题目 — 纠错
+GET {{host}}/api/v1/practice/questions?questionType=errorCorrection&textbookCode={{textbookCode}}&count=3
+X-Device-Id: {{deviceId}}
+
+### 1g. 获取练习题目 — 句子排序
+GET {{host}}/api/v1/practice/questions?questionType=sentenceOrdering&textbookCode={{textbookCode}}&count=3
+X-Device-Id: {{deviceId}}
+
+### 1h. 获取练习题目 — 听力
+GET {{host}}/api/v1/practice/questions?questionType=listening&textbookCode={{textbookCode}}&count=3
+X-Device-Id: {{deviceId}}
+
+### 1i. 获取练习题目 — 词汇
+GET {{host}}/api/v1/practice/questions?questionType=vocabulary&textbookCode={{textbookCode}}&count=3
+X-Device-Id: {{deviceId}}
+
+### 1j. 获取练习题目 — 语法
+GET {{host}}/api/v1/practice/questions?questionType=grammar&textbookCode={{textbookCode}}&count=3
+X-Device-Id: {{deviceId}}
+
+### ──────────────────────────────────────
+### 2. 获取今日推荐包
+### ──────────────────────────────────────
+
+GET {{host}}/api/v1/practice/today-package?textbookCode={{textbookCode}}
+X-Device-Id: {{deviceId}}
+
+### ──────────────────────────────────────
+### 3. 批量提交答题结果
+### ──────────────────────────────────────
+
+POST {{host}}/api/v1/practice/submit
+X-Device-Id: {{deviceId}}
+Content-Type: application/json
+
+{
+    "results": [
+        { "questionId": "q1-placeholder", "isCorrect": true },
+        { "questionId": "q2-placeholder", "isCorrect": false },
+        { "questionId": "q3-placeholder", "isCorrect": true }
+    ]
+}
+
+### ──────────────────────────────────────
+### 4. 学习统计（近7天）
+### ──────────────────────────────────────
+
+GET {{host}}/api/v1/user/stats?days=7
+X-Device-Id: {{deviceId}}
+
+### ──────────────────────────────────────
+### 4b. 学习统计（近30天）
+### ──────────────────────────────────────
+
+GET {{host}}/api/v1/user/stats?days=30
+X-Device-Id: {{deviceId}}
+
+### ──────────────────────────────────────
+### 5. 举报题目
+### ──────────────────────────────────────
+
+POST {{host}}/api/v1/practice/report
+X-Device-Id: {{deviceId}}
+Content-Type: application/json
+
+{
+    "questionId": "mcq-juniorPEP-7a-002",
+    "reason": "wrongAnswer",
+    "description": "正确答案应该是B选项"
+}
+
+### ──────────────────────────────────────
+### 6. 添加生词
+### ──────────────────────────────────────
+
+POST {{host}}/api/v1/wordbook/add
+X-Device-Id: {{deviceId}}
+Content-Type: application/json
+
+{
+    "word": "abandon",
+    "definition": "放弃；遗弃",
+    "exampleSentence": "He abandoned the plan."
+}
+
+### ──────────────────────────────────────
+### 6b. 再添加一个生词
+### ──────────────────────────────────────
+
+POST {{host}}/api/v1/wordbook/add
+X-Device-Id: {{deviceId}}
+Content-Type: application/json
+
+{
+    "word": "magnificent",
+    "definition": "壮丽的；宏伟的",
+    "exampleSentence": "The view from the mountain was magnificent."
+}
+
+### ──────────────────────────────────────
+### 7. 生词列表
+### ──────────────────────────────────────
+
+GET {{host}}/api/v1/wordbook/list
+X-Device-Id: {{deviceId}}
+
+### ──────────────────────────────────────
+### 8. 删除生词（替换为实际 wordId）
+### ──────────────────────────────────────
+
+DELETE {{host}}/api/v1/wordbook/REPLACE_WITH_WORD_ID
+X-Device-Id: {{deviceId}}
+
+### ──────────────────────────────────────
+### 9. 缺少 X-Device-Id 的请求（应返回 400）
+### ──────────────────────────────────────
+
+GET {{host}}/api/v1/practice/questions?questionType=multipleChoice&textbookCode=juniorPEP-7a&count=2
+
+### ──────────────────────────────────────
+### 10. 健康检查
+### ──────────────────────────────────────
+
+GET {{host}}/

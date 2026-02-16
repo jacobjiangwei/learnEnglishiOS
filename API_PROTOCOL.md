@@ -9,7 +9,6 @@
 
 0. [身份认证机制](#0-身份认证机制)
    - 0.1 [匿名设备 ID（X-Device-Id）](#01-匿名设备-idx-device-id)
-   - 0.2 [注册后合并设备数据](#02-注册后合并设备数据)
 1. [通用字段与枚举值](#1-通用字段与枚举值)
 2. [题型 JSON 定义](#2-题型-json-定义)
    - 2.1 [选择题 (multipleChoice)](#21-选择题-multiplechoice)
@@ -28,9 +27,13 @@
 3. [组合接口](#3-组合接口)
    - 3.1 [获取练习题组](#31-获取练习题组)
    - 3.2 [今日推荐套餐](#32-今日推荐套餐)
-   - 3.3 [首页进度数据](#33-首页进度数据)
+   - 3.3 [学习统计](#33-学习统计github-热力图风格)
 4. [提交答案 & 题目投诉接口](#4-提交答案--题目投诉接口)
-5. [通用响应格式](#5-通用响应格式)
+5. [生词本接口](#5-生词本接口)
+   - 5.1 [添加生词](#51-添加生词)
+   - 5.2 [删除生词](#52-删除生词)
+   - 5.3 [获取生词列表](#53-获取生词列表全量)
+6. [通用响应格式](#6-通用响应格式)
 
 ---
 
@@ -58,72 +61,74 @@ X-Device-Id: 550e8400-e29b-41d4-a716-446655440000
 #### 服务端逻辑
 
 1. **首次见到新 deviceId** → 自动创建匿名用户记录（`anonymous_user` 表）
-2. **后续请求** → 通过 `deviceId` 查询该设备的做题记录，实现智能选题
+2. **后续请求** → 通过 `deviceId` + LEFT JOIN 排除已完成的题目，只返回未做过的题
 3. **选题策略**：
-   - 排除最近 7 天做过的题目
-   - 优先选做错过的题（间隔复习 / Ebbinghaus）
-   - 混合不同题型，保证多样性
-   - 匹配 `textbookCode`
+   - **永久排除**已完成的题目（做过即不再出现）
+   - 匹配 `textbookCode` + `questionType`
+   - 随机抽取保证多样性
+   - 题库全部完成时返回空数组 + `remaining: 0`
 
 #### 数据库参考结构
 
 ```sql
 -- 匿名用户表
-anonymous_user:
-  device_id       VARCHAR(36) PRIMARY KEY  -- UUID
-  created_at      TIMESTAMP
-  textbook_code   VARCHAR(32)
-  user_id         VARCHAR(36) NULL         -- 注册后关联
+CREATE TABLE anonymous_user (
+  device_id       VARCHAR(36) PRIMARY KEY,  -- UUID
+  created_at      TIMESTAMP DEFAULT NOW(),
+  textbook_code   VARCHAR(32),
+  user_id         VARCHAR(36) NULL          -- 注册后关联
+);
 
--- 做题记录表
-device_progress:
-  id              BIGINT AUTO_INCREMENT
-  device_id       VARCHAR(36)              -- FK → anonymous_user
-  question_id     VARCHAR(36)              -- FK → question_bank
-  answered_at     TIMESTAMP
-  is_correct      BOOLEAN
-  time_spent_ms   INT
-  attempt_count   INT DEFAULT 1
+-- 题库表
+CREATE TABLE question_bank (
+  id              UUID PRIMARY KEY,
+  textbook_code   VARCHAR(32) NOT NULL,
+  question_type   VARCHAR(32) NOT NULL,
+  content         JSONB NOT NULL,            -- 完整题目 JSON
+  is_active       BOOLEAN DEFAULT true,      -- 被投诉下架 = false
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_qbank_lookup
+  ON question_bank (textbook_code, question_type, is_active);
+
+-- 用户完成记录表
+CREATE TABLE user_completion (
+  id              BIGINT GENERATED ALWAYS AS IDENTITY,
+  device_id       VARCHAR(36) NOT NULL,      -- FK → anonymous_user
+  question_id     UUID NOT NULL,             -- FK → question_bank
+  textbook_code   VARCHAR(32) NOT NULL,      -- 冗余存储，加速按教材查询
+  is_correct      BOOLEAN NOT NULL,
+  time_spent_ms   INT,
+  completed_at    TIMESTAMP DEFAULT NOW(),
+  UNIQUE (device_id, question_id)            -- 一人一题只记录一次，同时作为索引
+);
+
+CREATE INDEX idx_completion_device_textbook
+  ON user_completion (device_id, textbook_code);
 ```
 
----
+#### 核心选题查询（LEFT JOIN 排除已完成）
 
-### 0.2 注册后合并设备数据
-
-> 用户后续注册/登录后，将匿名设备的历史数据合并到正式账号下。
-
-#### 请求
-
-```
-POST /api/v1/auth/merge-device
-X-Device-Id: 550e8400-e29b-41d4-a716-446655440000
-Authorization: Bearer {token}
-```
-
-```json
-{
-  "deviceId": "550e8400-e29b-41d4-a716-446655440000"
-}
+```sql
+-- 单条 SQL 完成：从题库中选出该用户未做过的题
+SELECT q.*
+FROM question_bank q
+LEFT JOIN user_completion uc
+  ON q.id = uc.question_id
+  AND uc.device_id = :deviceId
+WHERE q.textbook_code = :textbookCode
+  AND q.question_type = :questionType
+  AND q.is_active = true
+  AND uc.id IS NULL            -- 没有匹配 = 没做过
+ORDER BY RANDOM()
+LIMIT :count;
 ```
 
-#### 响应
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "mergedRecords": 342,
-    "message": "设备数据已合并到您的账号"
-  }
-}
-```
-
-#### 服务端逻辑
-
-1. 将 `device_progress` 中该 `deviceId` 的所有记录关联到 `userId`
-2. 更新 `anonymous_user.user_id` 字段
-3. 后续请求优先通过 `Authorization` 查询用户数据，`X-Device-Id` 作为 fallback
+> **性能说明**：
+> - `LEFT JOIN ... IS NULL` 比 `NOT IN (子查询)` 更高效，数据库优化器处理更好
+> - `UNIQUE (device_id, question_id)` 约束本身就是索引，JOIN 时直接命中
+> - `ORDER BY RANDOM()` 在小表（几百条）上几乎无开销
 
 ---
 
@@ -136,7 +141,7 @@ Authorization: Bearer {token}
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `id` | string (UUID) | ✅ | 题目唯一标识 |
-| `type` | string | ✅ | 题型标识，见下方枚举 |
+| `questionType` | string | ✅ | 题型标识，见下方枚举 |
 | `textbookCode` | string | ✅ | 所属教材编码，决定该题的适用年级/教材。格式见下方说明 |
 
 ### textbookCode（教材编码）
@@ -269,7 +274,7 @@ Authorization: Bearer {token}
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440001",
-  "type": "multipleChoice",
+  "questionType": "multipleChoice",
   "textbookCode": "juniorPEP-7a",
   "stem": "The word 'abandon' means ___.",
   "translation": "'abandon' 这个词的意思是 ___。",
@@ -294,7 +299,7 @@ Authorization: Bearer {token}
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440002",
-  "type": "cloze",
+  "questionType": "cloze",
   "textbookCode": "juniorPEP-7a",
   "sentence": "I have ___ finished my homework.",
   "translation": "我已经完成了我的作业。",
@@ -319,13 +324,11 @@ Authorization: Bearer {token}
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440003",
-  "type": "reading",
+  "questionType": "reading",
   "textbookCode": "juniorPEP-8a",
-  "passage": {
-    "title": "The Discovery of Penicillin",
-    "content": "In 1928, Alexander Fleming noticed that a mold called Penicillium notatum had contaminated one of his petri dishes...",
-    "translation": "1928年，亚历山大·弗莱明注意到一种名为青霉菌的霉菌污染了他的一个培养皿……"
-  },
+  "title": "The Discovery of Penicillin",
+  "content": "In 1928, Alexander Fleming noticed that a mold called Penicillium notatum had contaminated one of his petri dishes...",
+  "translation": "1928年，亚历山大·弗莱明注意到一种名为青霉菌的霉菌污染了他的一个培养皿……",
   "questions": [
     {
       "id": "550e8400-e29b-41d4-a716-446655440003-q1",
@@ -349,9 +352,9 @@ Authorization: Bearer {token}
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `passage.title` | string | ✅ | 文章标题 |
-| `passage.content` | string | ✅ | 文章正文（英文） |
-| `passage.translation` | string | ✅ | **全文中文翻译** |
+| `title` | string | ✅ | 文章标题 |
+| `content` | string | ✅ | 文章正文（英文） |
+| `translation` | string | ✅ | **全文中文翻译** |
 | `questions` | array | ✅ | 该篇文章下的题目数组 |
 | `questions[].id` | string | ✅ | 子题 ID |
 | `questions[].stem` | string | ✅ | 子题题干（英文） |
@@ -369,7 +372,7 @@ Authorization: Bearer {token}
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440004",
-  "type": "translation",
+  "questionType": "translation",
   "textbookCode": "juniorPEP-8b",
   "sourceText": "科技改变了我们的生活方式。",
   "sourceLanguage": "zh",
@@ -394,7 +397,7 @@ Authorization: Bearer {token}
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440005",
-  "type": "rewriting",
+  "questionType": "rewriting",
   "textbookCode": "juniorPEP-9a",
   "originalSentence": "He is too young to go to school.",
   "originalTranslation": "他太小了，不能上学。",
@@ -421,7 +424,7 @@ Authorization: Bearer {token}
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440006",
-  "type": "errorCorrection",
+  "questionType": "errorCorrection",
   "textbookCode": "juniorPEP-7b",
   "sentence": "She don't like apples.",
   "translation": "她不喜欢苹果。",
@@ -446,7 +449,7 @@ Authorization: Bearer {token}
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440007",
-  "type": "sentenceOrdering",
+  "questionType": "sentenceOrdering",
   "textbookCode": "primaryPEP-5a",
   "shuffledParts": ["going", "I", "am", "to school"],
   "correctOrder": [1, 2, 0, 3],
@@ -469,7 +472,7 @@ Authorization: Bearer {token}
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440008",
-  "type": "listening",
+  "questionType": "listening",
   "textbookCode": "juniorPEP-8a",
   "audioURL": "https://api.volingo.com/audio/listening_001.mp3",
   "transcript": "Good morning, class. Today we're going to learn about the solar system.",
@@ -500,7 +503,7 @@ Authorization: Bearer {token}
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440009",
-  "type": "speaking",
+  "questionType": "speaking",
   "textbookCode": "juniorPEP-7a",
   "prompt": "Please read the following sentence aloud:",
   "referenceText": "The weather is beautiful today, isn't it?",
@@ -523,7 +526,7 @@ Authorization: Bearer {token}
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440010",
-  "type": "writing",
+  "questionType": "writing",
   "textbookCode": "juniorPEP-9b",
   "prompt": "Write a short paragraph about your favorite hobby. Include what it is, why you like it, and how often you do it.",
   "promptTranslation": "写一段关于你最喜欢的爱好的短文。包括它是什么，你为什么喜欢它，以及你多久做一次。",
@@ -554,7 +557,7 @@ Authorization: Bearer {token}
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440011",
-  "type": "vocabulary",
+  "questionType": "vocabulary",
   "textbookCode": "juniorPEP-7a",
   "word": "brave",
   "phonetic": "/breɪv/",
@@ -585,7 +588,7 @@ Authorization: Bearer {token}
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440012",
-  "type": "grammar",
+  "questionType": "grammar",
   "textbookCode": "juniorPEP-7b",
   "stem": "She ___ to school every day.",
   "translation": "她每天去上学。",
@@ -614,7 +617,7 @@ Authorization: Bearer {token}
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440013",
-  "type": "scenarioDaily",
+  "questionType": "scenarioDaily",
   "textbookCode": "juniorPEP-7a",
   "scenarioTitle": "在咖啡店点单",
   "context": "你走进一家咖啡店，需要点一杯咖啡。",
@@ -672,46 +675,46 @@ X-Device-Id: {deviceId}
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `type` | string | ✅ | 题型标识（见枚举） |
+| `questionType` | string | ✅ | 题型标识（见枚举） |
 | `count` | int | ❌ | 题目数量，默认 5 |
 | `textbookCode` | string | ✅ | 教材编码，如 `"juniorPEP-7a"` |
+
+> 服务端使用 LEFT JOIN 排除该 `X-Device-Id` 已完成的题目，只返回未做过的题。
+> 若该题型全部完成，返回空数组 + `remaining: 0`。
 
 #### 响应
 
 ```json
 {
-  "code": 200,
-  "message": "success",
-  "data": {
-    "questionType": "multipleChoice",
-    "textbookCode": "juniorPEP-7a",
-    "questions": [
-      { /* 对应题型的 JSON 对象 */ },
-      { /* ... */ }
-    ]
-  }
+  "questionType": "multipleChoice",
+  "textbookCode": "juniorPEP-7a",
+  "remaining": 450,
+  "questions": [
+    { /* 对应题型的 JSON 对象 */ },
+    { /* ... */ }
+  ]
 }
 ```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `remaining` | int | 该题型剩余未完成题数（不含本次返回的）。为 0 时客户端显示"已全部完成" |
 
 > **阅读理解特殊格式**：`type=reading` 时返回的不是 questions 数组，而是 passages 数组：
 
 ```json
 {
-  "code": 200,
-  "message": "success",
-  "data": {
-    "questionType": "reading",
-    "textbookCode": "juniorPEP-8a",
-    "passages": [
-      {
-        "id": "uuid-string",
-        "title": "...",
-        "content": "...",
-        "translation": "...",
-        "questions": [ /* ReadingQuestion 数组 */ ]
-      }
-    ]
-  }
+  "questionType": "reading",
+  "textbookCode": "juniorPEP-8a",
+  "passages": [
+    {
+      "id": "uuid-string",
+      "title": "...",
+      "content": "...",
+      "translation": "...",
+      "questions": [ /* ReadingQuestion 数组 */ ]
+    }
+  ]
 }
 ```
 
@@ -726,61 +729,57 @@ GET /api/v1/practice/today-package?textbookCode={code}
 X-Device-Id: {deviceId}
 ```
 
-> 服务端根据 `X-Device-Id` 查询该设备做题历史，智能排除已做过的题、优先推荐错题复习。
+> 服务端根据 `X-Device-Id` 使用 LEFT JOIN 排除该设备已完成的题目，随机组合不同题型返回未做过的题。
 
 #### 响应
 
 ```json
 {
-  "code": 200,
-  "message": "success",
-  "data": {
-    "date": "2026-02-14",
-    "textbookCode": "juniorPEP-8a",
-    "estimatedMinutes": 15,
-    "items": [
-      {
-        "type": "multipleChoice",
-        "count": 10,
-        "weight": 0.35,
-        "questions": [
-          { /* MCQQuestion JSON（含 textbookCode） */ }
-        ]
-      },
-      {
-        "type": "cloze",
-        "count": 5,
-        "weight": 0.20,
-        "questions": [
-          { /* ClozeQuestion JSON */ }
-        ]
-      },
-      {
-        "type": "reading",
-        "count": 3,
-        "weight": 0.20,
-        "passages": [
-          { /* ReadingPassage JSON（含 passage.translation） */ }
-        ]
-      },
-      {
-        "type": "listening",
-        "count": 3,
-        "weight": 0.15,
-        "questions": [
-          { /* ListeningQuestion JSON */ }
-        ]
-      },
-      {
-        "type": "vocabulary",
-        "count": 5,
-        "weight": 0.10,
-        "questions": [
-          { /* VocabularyQuestion JSON */ }
-        ]
-      }
-    ]
-  }
+  "date": "2026-02-14",
+  "textbookCode": "juniorPEP-8a",
+  "estimatedMinutes": 15,
+  "items": [
+    {
+      "type": "multipleChoice",
+      "count": 10,
+      "weight": 0.35,
+      "questions": [
+        { /* MCQQuestion JSON（含 textbookCode） */ }
+      ]
+    },
+    {
+      "type": "cloze",
+      "count": 5,
+      "weight": 0.20,
+      "questions": [
+        { /* ClozeQuestion JSON */ }
+      ]
+    },
+    {
+      "type": "reading",
+      "count": 3,
+      "weight": 0.20,
+      "passages": [
+        { /* ReadingPassage JSON（含 passage.translation） */ }
+      ]
+    },
+    {
+      "type": "listening",
+      "count": 3,
+      "weight": 0.15,
+      "questions": [
+        { /* ListeningQuestion JSON */ }
+      ]
+    },
+    {
+      "type": "vocabulary",
+      "count": 5,
+      "weight": 0.10,
+      "questions": [
+        { /* VocabularyQuestion JSON */ }
+      ]
+    }
+  ]
 }
 ```
 
@@ -796,44 +795,74 @@ X-Device-Id: {deviceId}
 
 ---
 
-### 3.3 首页进度数据
+### 3.3 学习统计（GitHub 热力图风格）
+
+> 返回用户终身学习数据 + 每日做题活动记录，前端可绘制热力图或曲线图。
+> 数据来源：`user_completion` 表按日期聚合，无额外统计表。
 
 #### 请求
 
 ```
-GET /api/v1/user/home-progress
+GET /api/v1/user/stats?days={n}
 X-Device-Id: {deviceId}
 ```
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `days` | int | ❌ | 返回最近 N 天的每日活动数据，默认 365 |
 
 #### 响应
 
 ```json
 {
-  "code": 200,
-  "message": "success",
-  "data": {
-    "weeklyQuestionsDone": 87,
-    "streak": 5,
-    "todayErrorCount": 4,
-    "weakTypes": ["cloze", "listening"],
-    "currentTextbookCode": "juniorPEP-8a"
-  }
+  "totalCompleted": 1247,
+  "totalCorrect": 1089,
+  "currentStreak": 5,
+  "longestStreak": 23,
+  "dailyActivity": [
+    { "date": "2026-02-15", "count": 12, "correctCount": 10 },
+    { "date": "2026-02-14", "count": 8,  "correctCount": 7 },
+    { "date": "2026-02-13", "count": 0,  "correctCount": 0 }
+  ]
 }
 ```
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `weeklyQuestionsDone` | int | 本周已做题数 |
-| `streak` | int | 连续打卡天数 |
-| `todayErrorCount` | int | 今日错题数（0 则不显示错题入口） |
-| `weakTypes` | string[] | 薄弱题型标识列表 |
-| `currentTextbookCode` | string | 用户当前教材编码 |
+| `totalCompleted` | int | 终身总做题数 |
+| `totalCorrect` | int | 终身总正确数 |
+| `currentStreak` | int | 当前连续打卡天数 |
+| `longestStreak` | int | 历史最长连续天数 |
+| `dailyActivity` | array | 每日活动数组（按日期降序） |
+| `dailyActivity[].date` | string | 日期（ISO date） |
+| `dailyActivity[].count` | int | 当日做题数（0 = 未学习） |
+| `dailyActivity[].correctCount` | int | 当日正确数 |
+
+> **服务端查询**：
+> ```sql
+> -- 终身统计
+> SELECT COUNT(*) AS total_completed,
+>        SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) AS total_correct
+> FROM user_completion
+> WHERE device_id = :deviceId;
+>
+> -- 每日活动（最近 N 天）
+> SELECT DATE(completed_at) AS date,
+>        COUNT(*) AS count,
+>        SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) AS correct_count
+> FROM user_completion
+> WHERE device_id = :deviceId
+>   AND completed_at >= NOW() - INTERVAL :days DAY
+> GROUP BY DATE(completed_at)
+> ORDER BY date DESC;
+> ```
+> 连续打卡天数需在应用层计算：遍历 `dailyActivity` 从今天往前数连续 count > 0 的天数。
 
 ---
 
 ## 4. 提交答案 & 题目投诉接口
 
-### 4.1 提交答案
+### 4.1 提交答案（批量）
 
 #### 请求
 
@@ -842,49 +871,32 @@ POST /api/v1/practice/submit
 X-Device-Id: {deviceId}
 ```
 
+> **客户端判断对错**：答案已在题目 JSON 中（`correctIndex`、`correctAnswer` 等），客户端本地判断后将结果批量提交给服务端记录。
+> 一次提交当次练习中所有做过的题目。服务端根据 `questionId` 从题库查出 `textbookCode`、`questionType`，冗余写入 `user_completion` 表。
+> `ON CONFLICT DO NOTHING`（重复提交幂等）。
+
 ```json
 {
-  "questionId": "550e8400-e29b-41d4-a716-446655440001",
-  "questionType": "multipleChoice",
-  "textbookCode": "juniorPEP-7a",
-  "userAnswer": {
-    "selectedIndex": 1
-  },
-  "timeSpentMs": 12340,
-  "timestamp": "2026-02-14T10:30:00Z"
+  "results": [
+    { "questionId": "550e8400-e29b-41d4-a716-446655440001", "isCorrect": true },
+    { "questionId": "550e8400-e29b-41d4-a716-446655440002", "isCorrect": false },
+    { "questionId": "550e8400-e29b-41d4-a716-446655440003", "isCorrect": true }
+  ]
 }
 ```
 
-> `userAnswer` 的结构因题型而异：
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `results` | array | ✅ | 答题结果数组 |
+| `results[].questionId` | string | ✅ | 题目 ID |
+| `results[].isCorrect` | boolean | ✅ | 客户端判断是否正确 |
 
-| 题型 | userAnswer 格式 |
-|------|----------------|
-| multipleChoice / vocabulary / grammar | `{ "selectedIndex": 1 }` |
-| cloze | `{ "text": "already" }` |
-| reading | `{ "questionId": "sub-uuid", "selectedIndex": 0 }` |
-| translation / rewriting / writing | `{ "text": "用户输入的文本" }` |
-| errorCorrection | `{ "selectedWord": "don't" }` |
-| sentenceOrdering | `{ "order": [1, 2, 0, 3] }` |
-| listening | `{ "selectedIndex": 2 }` |
-| speaking | `{ "audioURL": "https://...", "recognizedText": "..." }` |
-| scenario* | `{ "selectedIndex": 0 }` 或 `{ "text": "自由输入" }` |
+> 不再需要 `userAnswer` 字段 —— 服务端只记录完成状态，不存储用户作答内容。
+> `textbookCode`、`questionType` 由服务端从题库查出后冗余存入完成记录（方案 A：反范式，适合 Cosmos DB 无 JOIN 场景）。
 
 #### 响应
 
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "correct": true,
-    "score": 100,
-    "feedback": "回答正确！",
-    "correctAnswer": {
-      "selectedIndex": 1
-    }
-  }
-}
-```
+HTTP 204 No Content（无响应体）
 
 ### 4.2 投诉错误题目
 
@@ -925,11 +937,7 @@ X-Device-Id: {deviceId}
 
 ```json
 {
-  "code": 200,
-  "message": "success",
-  "data": {
-    "reportId": "rpt-550e8400-e29b-41d4-a716-446655440099"
-  }
+  "reportId": "550e8400e29b41d4a716446655440099"
 }
 ```
 
@@ -937,38 +945,168 @@ X-Device-Id: {deviceId}
 
 ---
 
-## 5. 通用响应格式
+## 5. 生词本接口
 
-所有接口统一使用以下包装格式：
+> 生词本数据存储在服务端，通过 `X-Device-Id` 关联用户。  
+> 复习逻辑（间隔复习、level 计算）在 iOS 客户端本地完成，服务端只做 CRUD 存储。
+
+### 5.1 添加生词
+
+#### 请求
+
+```
+POST /api/v1/wordbook/add
+X-Device-Id: {deviceId}
+```
 
 ```json
 {
-  "code": 200,
-  "message": "success",
-  "data": { /* 业务数据 */ }
+  "word": "elaborate",
+  "phonetic": "/ɪˈlæb.ər.ət/",
+  "definitions": [
+    {
+      "partOfSpeech": "adj.",
+      "meaning": "精心制作的；详尽的",
+      "example": "She made elaborate preparations for the party.",
+      "exampleTranslation": "她为聚会做了精心的准备。"
+    },
+    {
+      "partOfSpeech": "v.",
+      "meaning": "详细阐述",
+      "example": "Could you elaborate on that point?",
+      "exampleTranslation": "你能详细说明一下那个观点吗？"
+    }
+  ]
 }
 ```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `word` | string | ✅ | 单词原文 |
+| `phonetic` | string | ❌ | 音标 |
+| `definitions` | array | ✅ | 释义数组 |
+| `definitions[].partOfSpeech` | string | ✅ | 词性（adj. / v. / n. 等） |
+| `definitions[].meaning` | string | ✅ | 中文释义 |
+| `definitions[].example` | string | ❌ | 例句 |
+| `definitions[].exampleTranslation` | string | ❌ | 例句中文翻译 |
+
+#### 响应
+
+```json
+{
+  "id": "wb-550e8400-e29b-41d4-a716-446655440001",
+  "word": "elaborate",
+  "addedAt": "2026-02-15T10:30:00Z"
+}
+```
+
+> 如果该单词已存在（同一 deviceId + word 去重），返回已有记录，不重复添加。
+
+---
+
+### 5.2 删除生词
+
+#### 请求
+
+```
+DELETE /api/v1/wordbook/{wordId}
+X-Device-Id: {deviceId}
+```
+
+#### 响应
+
+HTTP 204 No Content（无响应体）
+
+如果 wordId 不存在，返回 HTTP 404：
+
+```json
+{ "error": "Word not found" }
+```
+
+---
+
+### 5.3 获取生词列表（全量）
+
+#### 请求
+
+```
+GET /api/v1/wordbook/list
+X-Device-Id: {deviceId}
+```
+
+#### 响应
+
+```json
+{
+  "total": 156,
+  "words": [
+    {
+      "id": "wb-550e8400-e29b-41d4-a716-446655440001",
+      "word": "elaborate",
+      "phonetic": "/ɪˈlæb.ər.ət/",
+      "definitions": [
+        {
+          "partOfSpeech": "adj.",
+          "meaning": "精心制作的；详尽的",
+          "example": "She made elaborate preparations for the party.",
+          "exampleTranslation": "她为聚会做了精心的准备。"
+        }
+      ],
+      "addedAt": "2026-02-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `total` | int | 生词总数 |
+| `words` | array | 全量生词数组（按 addedAt 降序） |
+| `words[].id` | string | 生词 ID（用于删除） |
+| `words[].word` | string | 单词原文 |
+| `words[].phonetic` | string | 音标（可为 null） |
+| `words[].definitions` | array | 释义数组 |
+| `words[].addedAt` | string | 添加时间（ISO 8601） |
+
+> **说明**：不分页，全量返回。几百个生词的 JSON 体积很小（~50KB）。  
+> 客户端拿到全量数据后，在本地完成复习逻辑（correctCount/wrongCount/level/间隔计算）。
+
+#### 数据库参考结构
+
+```sql
+CREATE TABLE wordbook (
+  id          VARCHAR(64) PRIMARY KEY,
+  device_id   VARCHAR(36) NOT NULL,
+  word        VARCHAR(128) NOT NULL,
+  phonetic    VARCHAR(128),
+  definitions JSONB NOT NULL,
+  added_at    TIMESTAMP DEFAULT NOW(),
+  UNIQUE (device_id, word)            -- 同一用户同一单词不重复
+);
+
+CREATE INDEX idx_wordbook_device ON wordbook (device_id);
+```
+
+---
+
+## 6. 响应约定
+
+所有接口直接返回业务数据，不做额外包装。通过 HTTP 状态码表示成功或失败：
+
+| HTTP 状态码 | 说明 | 响应体 |
+|-------------|------|--------|
+| 200 | 成功（有数据返回） | 业务数据 JSON |
+| 204 | 成功（无需返回数据） | 无 |
+| 400 | 请求参数错误 | `{ "error": "..." }` |
+| 404 | 资源不存在 | `{ "error": "..." }` |
+| 429 | 请求过于频繁 | `{ "error": "..." }` |
+| 500 | 服务端内部错误 | `{ "error": "..." }` |
 
 错误示例：
 
 ```json
-{
-  "code": 401,
-  "message": "Unauthorized: token expired",
-  "data": null
-}
+{ "error": "Missing X-Device-Id header" }
 ```
-
-常见 code 值：
-
-| code | 说明 |
-|------|------|
-| 200 | 成功 |
-| 400 | 请求参数错误 |
-| 401 | 未授权 / Token 过期 |
-| 404 | 资源不存在 |
-| 429 | 请求过于频繁 |
-| 500 | 服务端内部错误 |
 
 ---
 
@@ -1024,5 +1162,9 @@ X-Device-Id: {deviceId}
 > 3. 提供 `POST /api/v1/practice/report` 接口供用户投诉错误题目。  
 > 4. 除翻译题外，所有含英文原文的题型都必须提供对应的中文翻译字段。  
 > 5. 当前前端使用 `MockDataFactory` 生成本地数据，后续替换为 HTTP 请求即可。  
-> 6. **所有 API 请求都必须携带 `X-Device-Id` Header**，服务端以此追踪匿名用户的做题记录和智能选题。  
-> 7. 用户注册后通过 `POST /api/v1/auth/merge-device` 将匿名数据合并到正式账号。
+> 6. **所有 API 请求都必须携带 `X-Device-Id` Header**，服务端以此追踪匿名用户的做题记录和生词本。  
+> 7. **选题使用 LEFT JOIN 排除已完成题目**：`question_bank LEFT JOIN user_completion ON id = question_id AND device_id = :id WHERE uc.id IS NULL`，避免 `NOT IN` 大列表。  
+> 8. **submit 由客户端判断对错**，服务端只记录到 `user_completion`，`ON CONFLICT DO NOTHING` 保证幂等。  
+> 9. **做过的题永久排除**，不会再出现在后续请求中。题库全部完成时返回 `remaining: 0`。  
+> 10. **生词本**全量返回（不分页），复习逻辑在客户端本地完成，服务端只做 CRUD 存储。  
+> 11. **学习统计**从 `user_completion` 表按日期聚合，支持 GitHub 热力图风格的每日活动数据。
