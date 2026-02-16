@@ -171,6 +171,12 @@ final class APIService {
             let size = ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
             let contentType = response.value(forHTTPHeaderField: "Content-Type") ?? ""
             lines.append("│  ⬅️ \(icon) \(status) · \(size) · \(contentType)")
+
+            // Response body（最多打印 2000 字符，方便调试 JSON 格式）
+            if let body = String(data: data, encoding: .utf8) {
+                let preview = body.count > 2000 ? String(body.prefix(2000)) + "\n│  … (truncated)" : body
+                lines.append("│  ⬅️ 📦 \(preview)")
+            }
         }
 
         // Error

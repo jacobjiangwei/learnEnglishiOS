@@ -276,6 +276,19 @@ struct StatsResponse: Codable {
     let currentStreak: Int
     let longestStreak: Int
     let dailyActivity: [DailyActivity]
+    let questionTypeStats: [QuestionTypeStats]?
+}
+
+struct QuestionTypeStats: Codable, Identifiable {
+    let questionType: String
+    let total: Int
+    let correct: Int
+
+    var id: String { questionType }
+    var accuracy: Double {
+        guard total > 0 else { return 0 }
+        return Double(correct) / Double(total) * 100
+    }
 }
 
 struct DailyActivity: Codable {
@@ -293,6 +306,7 @@ struct SubmitRequest: Codable {
 struct SubmitResultItem: Codable {
     let questionId: String
     let isCorrect: Bool
+    let questionType: String?
 }
 
 // MARK: - 题目投诉

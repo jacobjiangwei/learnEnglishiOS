@@ -42,11 +42,15 @@ class PracticeViewModel: ObservableObject {
     /// 本次练习中所有获取到的题目 ID，用于批量提交
     @Published var questionIds: [(id: String, isCorrect: Bool)] = []
 
+    /// 当前练习的题型 key，提交时写入
+    private var currentQuestionType: String?
+
     private let api = APIService.shared
 
     // MARK: - 加载方法
 
     func loadQuestions(type: QuestionType, textbookCode: String) {
+        currentQuestionType = type.apiKey
         Task {
             await doLoad(type: type, textbookCode: textbookCode)
         }
@@ -93,7 +97,7 @@ class PracticeViewModel: ObservableObject {
 
     func submitResults() async {
         guard !questionIds.isEmpty else { return }
-        let results = questionIds.map { SubmitResultItem(questionId: $0.id, isCorrect: $0.isCorrect) }
+        let results = questionIds.map { SubmitResultItem(questionId: $0.id, isCorrect: $0.isCorrect, questionType: currentQuestionType) }
         do {
             try await api.submitResults(results)
             NotificationCenter.default.post(name: .practiceResultsSubmitted, object: nil)
@@ -217,7 +221,8 @@ class PracticeViewModel: ObservableObject {
                     instruction: q.instruction,
                     referenceAnswer: q.referenceAnswer,
                     keywords: [],
-                    explanation: q.explanation ?? ""
+                    explanation: q.explanation ?? "",
+                    isSelfEvaluated: true
                 )
             }
             rewritingItems = .loaded(items)

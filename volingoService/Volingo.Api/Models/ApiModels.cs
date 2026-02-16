@@ -10,14 +10,15 @@ public record PackageItem(string Type, int Count, double Weight, List<object> Qu
 
 // ── Practice: Submit ──
 public record SubmitRequest(List<SubmitResultItem> Results);
-public record SubmitResultItem(string QuestionId, bool IsCorrect);
+public record SubmitResultItem(string QuestionId, bool IsCorrect, string? QuestionType = null);
 
 // ── Practice: Report ──
 public record ReportRequest(string QuestionId, string Reason, string? Description);
 public record ReportResponse(string ReportId);
 
 // ── User: Stats ──
-public record StatsResponse(int TotalCompleted, int TotalCorrect, int CurrentStreak, int LongestStreak, List<DailyActivity> DailyActivity);
+public record StatsResponse(int TotalCompleted, int TotalCorrect, int CurrentStreak, int LongestStreak, List<DailyActivity> DailyActivity, List<QuestionTypeStats> QuestionTypeStats);
+public record QuestionTypeStats(string QuestionType, int Total, int Correct);
 public record DailyActivity(string Date, int Count, int CorrectCount);
 
 // ── Wordbook ──

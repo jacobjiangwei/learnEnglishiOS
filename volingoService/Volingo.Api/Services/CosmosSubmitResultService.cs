@@ -29,6 +29,7 @@ public class CosmosSubmitResultService : ISubmitResultService
                 Id = $"{deviceId}_{item.QuestionId}",
                 DeviceId = deviceId,
                 QuestionId = item.QuestionId,
+                QuestionType = item.QuestionType,
                 IsCorrect = item.IsCorrect,
                 CompletedAt = DateTime.UtcNow
             };
@@ -78,7 +79,15 @@ public class CosmosSubmitResultService : ISubmitResultService
         }
 
         var (current, longest) = CalculateStreaks(dailyActivity);
-        return new StatsResponse(totalCompleted, totalCorrect, current, longest, dailyActivity);
+
+        var questionTypeStats = allRecords
+            .Where(r => !string.IsNullOrEmpty(r.QuestionType))
+            .GroupBy(r => r.QuestionType!)
+            .Select(g => new QuestionTypeStats(g.Key, g.Count(), g.Count(r => r.IsCorrect)))
+            .OrderByDescending(s => s.Total)
+            .ToList();
+
+        return new StatsResponse(totalCompleted, totalCorrect, current, longest, dailyActivity, questionTypeStats);
     }
 
     public async Task<HashSet<string>> GetCompletedIdsAsync(string deviceId)

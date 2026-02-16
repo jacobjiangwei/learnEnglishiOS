@@ -58,7 +58,6 @@ class HomeViewModel: ObservableObject {
     }
 
     var streak: Int { stats?.currentStreak ?? 0 }
-    var totalCompleted: Int { stats?.totalCompleted ?? 0 }
 }
 
 // MARK: - Home View
@@ -93,9 +92,6 @@ struct HomeView: View {
                     ForEach(TrainingCategory.allCases) { category in
                         TrainingSectionView(category: category)
                     }
-
-                    // 5. 轻量进度
-                    progressSection
 
                     Spacer(minLength: 40)
                 }
@@ -172,31 +168,6 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - 轻量进度
-
-    private var progressSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("学习概况")
-                .font(.headline)
-
-            HStack(spacing: 16) {
-                ProgressStatView(label: "总做题", value: "\(vm.totalCompleted)")
-                ProgressStatView(label: "连续学习", value: "\(vm.streak) 天")
-                ProgressStatView(label: "正确率", value: correctRateLabel)
-            }
-            .padding()
-            .frame(maxWidth: .infinity)
-            .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-        }
-    }
-
-    private var correctRateLabel: String {
-        guard let stats = vm.stats, stats.totalCompleted > 0 else { return "--" }
-        let rate = Double(stats.totalCorrect) / Double(stats.totalCompleted) * 100
-        return String(format: "%.0f%%", rate)
-    }
-
     private var currentLevelLabel: String {
         if let level = store.userState.confirmedLevel {
             return level.rawValue
@@ -232,24 +203,6 @@ private struct ReviewQuickCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(color.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-}
-
-// MARK: - 进度统计项
-
-private struct ProgressStatView: View {
-    let label: String
-    let value: String
-    
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.title3.bold())
-            Text(label)
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity)
     }
 }
 

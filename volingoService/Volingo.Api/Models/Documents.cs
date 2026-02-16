@@ -9,6 +9,7 @@ public class CompletionDocument
     public string Id { get; set; } = "";
     public string DeviceId { get; set; } = "";
     public string QuestionId { get; set; } = "";
+    public string? QuestionType { get; set; }
     public bool IsCorrect { get; set; }
     public DateTime CompletedAt { get; set; }
 }
