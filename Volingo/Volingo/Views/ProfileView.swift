@@ -52,7 +52,7 @@ struct ProfileView: View {
                         // 第一行：总做题 / 正确率 / 连续学习
                         HStack(spacing: 0) {
                             StatCell(value: "\(stats.totalCompleted)", label: "总做题")
-                            StatCell(value: overallAccuracy(stats), label: "正确率")
+                            StatCell(value: overallAccuracy(stats), label: "正确率", valueColor: overallAccuracyColor(stats))
                             StatCell(value: "\(stats.currentStreak) 天", label: "连续学习")
                         }
                         .listRowInsets(EdgeInsets())
@@ -88,7 +88,7 @@ struct ProfileView: View {
                                 .foregroundColor(.secondary)
                                 .frame(width: 60, alignment: .trailing)
                             Text(stat.total > 0 ? String(format: "%.0f%%", stat.accuracy) : "--")
-                                .foregroundColor(.secondary)
+                                .foregroundColor(stat.total > 0 ? accuracyColor(for: stat.accuracy) : .secondary)
                                 .frame(width: 60, alignment: .trailing)
                         }
                     }
@@ -114,8 +114,9 @@ struct ProfileView: View {
                         HStack {
                             Text("最近测评")
                             Spacer()
-                            Text("正确率 \(Int(score * 100))%")
-                                .foregroundColor(.secondary)
+                            let pct = score * 100
+                            Text("正确率 \(Int(pct))%")
+                                .foregroundColor(accuracyColor(for: pct))
                         }
                     }
                 }
@@ -191,6 +192,12 @@ struct ProfileView: View {
         return String(format: "%.0f%%", rate)
     }
 
+    private func overallAccuracyColor(_ stats: StatsResponse) -> Color {
+        guard stats.totalCompleted > 0 else { return .primary }
+        let rate = Double(stats.totalCorrect) / Double(stats.totalCompleted) * 100
+        return accuracyColor(for: rate)
+    }
+
     private func questionTypeDisplayName(_ apiKey: String) -> String {
         QuestionType.from(apiKey: apiKey)?.rawValue ?? apiKey
     }
@@ -232,11 +239,13 @@ struct ProfileView: View {
 private struct StatCell: View {
     let value: String
     let label: String
+    var valueColor: Color = .primary
 
     var body: some View {
         VStack(spacing: 4) {
             Text(value)
                 .font(.title3.bold())
+                .foregroundColor(valueColor)
             Text(label)
                 .font(.caption)
                 .foregroundColor(.secondary)

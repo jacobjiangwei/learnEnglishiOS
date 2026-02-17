@@ -35,9 +35,10 @@ struct PracticeResultView: View {
                 VStack(spacing: 4) {
                     Text("\(scorePercent)%")
                         .font(.largeTitle.bold())
+                        .foregroundColor(scoreColor)
                     Text(scoreLabel)
                         .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(scoreColor.opacity(0.8))
                 }
             }
 
@@ -69,8 +70,8 @@ struct PracticeResultView: View {
 
     private var scoreColor: Color {
         switch scorePercent {
-        case 80...100: return .green
-        case 60..<80: return .orange
+        case 90...100: return .green
+        case 60..<90: return .yellow
         default: return .red
         }
     }
@@ -105,5 +106,16 @@ private struct ResultStatItem: View {
 #Preview {
     NavigationView {
         PracticeResultView(title: "选择题", totalCount: 10, correctCount: 7)
+    }
+}
+
+// MARK: - 正确率颜色（全局复用）
+
+/// 根据正确率百分比返回颜色：< 60 红色，60~89 黄色，≥ 90 绿色
+func accuracyColor(for percent: Double) -> Color {
+    switch percent {
+    case 90...Double.greatestFiniteMagnitude: return .green
+    case 60..<90: return .yellow
+    default: return .red
     }
 }

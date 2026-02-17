@@ -44,7 +44,7 @@ struct ErrorCorrectionPracticeView: View {
 
                         // 单词按钮网格
                         let words = question.sentence.components(separatedBy: " ")
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 70))], spacing: 8) {
+                        FlowLayout(spacing: 8) {
                             ForEach(Array(words.enumerated()), id: \.offset) { index, word in
                                 Button(action: {
                                     guard !showExplanation else { return }
@@ -58,6 +58,8 @@ struct ErrorCorrectionPracticeView: View {
                                 }) {
                                     Text(word)
                                         .font(.body)
+                                        .lineLimit(1)
+                                        .fixedSize()
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 8)
                                         .background(wordBackground(word, question: question))

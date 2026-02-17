@@ -50,7 +50,7 @@ struct OrderingPracticeView: View {
                         }
 
                         // 可选单词
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 80))], spacing: 8) {
+                        FlowLayout(spacing: 8) {
                             ForEach(Array(question.shuffledParts.enumerated()), id: \.offset) { index, part in
                                 let isSelected = selectedIndices.contains(index)
                                 Button(action: {
@@ -63,6 +63,8 @@ struct OrderingPracticeView: View {
                                 }) {
                                     Text(part)
                                         .font(.body)
+                                        .lineLimit(1)
+                                        .fixedSize()
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 8)
                                         .background(isSelected ? Color.blue.opacity(0.15) : Color(.secondarySystemGroupedBackground))

@@ -288,34 +288,86 @@ struct SpeakingPracticeView: View {
 
     // MARK: - 录音控制区
 
+    @State private var pulsePhase = false
+
     private func recordingSection(_ question: SpeakingQuestion) -> some View {
-        let disabled = isEvaluating || pronunciationResult != nil
+        let disabled = isEvaluating
             || (question.category == .listenRepeat && !hasListened)
 
-        return Button(action: toggleRecording) {
-            VStack(spacing: 8) {
-                ZStack {
-                    if isRecording {
-                        Circle()
-                            .fill(Color.red.opacity(0.15))
-                            .frame(width: 100, height: 100)
-                            .scaleEffect(isRecording ? 1.3 : 1.0)
-                            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isRecording)
+        return VStack(spacing: 4) {
+            Button(action: toggleRecording) {
+                VStack(spacing: 12) {
+                    ZStack {
+                        if isRecording {
+                            // 外层 — 慢速大圈，向外扩散淡出
+                            Circle()
+                                .stroke(Color.red.opacity(0.15), lineWidth: 2)
+                                .frame(width: 90, height: 90)
+                                .scaleEffect(pulsePhase ? 1.4 : 0.85)
+                                .opacity(pulsePhase ? 0 : 0.7)
+                                .animation(.easeOut(duration: 1.5).repeatForever(autoreverses: false), value: pulsePhase)
+
+                            // 中层 — 呼吸填充
+                            Circle()
+                                .fill(Color.red.opacity(0.10))
+                                .frame(width: 78, height: 78)
+                                .scaleEffect(pulsePhase ? 1.2 : 0.95)
+                                .opacity(pulsePhase ? 0.08 : 0.4)
+                                .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: pulsePhase)
+
+                            // 内层 — 快速呼吸光晕
+                            Circle()
+                                .fill(Color.red.opacity(0.12))
+                                .frame(width: 70, height: 70)
+                                .scaleEffect(pulsePhase ? 1.1 : 1.0)
+                                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: pulsePhase)
+                        }
+
+                        Image(systemName: isRecording ? "stop.circle.fill" : "mic.circle.fill")
+                            .font(.system(size: 56))
+                            .foregroundColor(recordButtonColor(disabled: disabled))
+                            .symbolEffect(.pulse, isActive: isRecording)
+                    }
+                    .frame(height: 80)
+                    .onChange(of: isRecording) { _, newVal in
+                        if newVal {
+                            // 先重置到初始态，下一帧再触发动画
+                            pulsePhase = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                pulsePhase = true
+                            }
+                        } else {
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                pulsePhase = false
+                            }
+                        }
                     }
 
-                    Image(systemName: isRecording ? "stop.circle.fill" : "mic.circle.fill")
-                        .font(.system(size: 64))
-                        .foregroundColor(recordButtonColor(disabled: disabled))
+                    Text(recordLabel(disabled: disabled, isListenRepeat: question.category == .listenRepeat))
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 }
-
-                Text(recordLabel(disabled: disabled, isListenRepeat: question.category == .listenRepeat))
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 20)
+            .disabled(disabled)
+
+            // 重新录音按钮
+            if pronunciationResult != nil && !isEvaluating {
+                Button(action: retryRecording) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.counterclockwise")
+                        Text("重新录音")
+                    }
+                    .font(.subheadline.bold())
+                    .foregroundColor(.orange)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.orange.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
         }
-        .disabled(disabled)
     }
 
     private func recordButtonColor(disabled: Bool) -> Color {
@@ -327,9 +379,16 @@ struct SpeakingPracticeView: View {
     private func recordLabel(disabled: Bool, isListenRepeat: Bool) -> String {
         if isRecording { return "录音中…点击停止" }
         if isEvaluating { return "评测中…" }
-        if pronunciationResult != nil { return "已完成评测" }
         if isListenRepeat && !hasListened { return "请先听示范" }
         return "点击开始录音"
+    }
+
+    /// 重新录音：清除上次结果并开始新一轮
+    private func retryRecording() {
+        pronunciationResult = nil
+        isRecording = false
+        isEvaluating = false
+        pulsePhase = false
     }
 
     // MARK: - 录音逻辑
@@ -353,10 +412,12 @@ struct SpeakingPracticeView: View {
             print("❌ 实时识别启动失败: \(error)")
         }
         isRecording = true
+        // pulsePhase 由 onChange(of: isRecording) 自动触发
     }
 
     private func stopAndEvaluate() {
         isRecording = false
+        // pulsePhase 由 onChange(of: isRecording) 自动收起
         speech.stopListening()
 
         let fileURL = audio.stopRecording()
@@ -378,9 +439,6 @@ struct SpeakingPracticeView: View {
             do {
                 let result = try await speech.evaluatePronunciation(audioURL: url, referenceText: question.referenceText)
                 pronunciationResult = result
-                let isCorrect = result.overallScore >= 60
-                if isCorrect { correctCount += 1 }
-                onAnswer?(question.id, isCorrect)
             } catch {
                 pronunciationResult = PronunciationResult(
                     recognizedText: speech.recognizedText,
@@ -436,11 +494,12 @@ struct SpeakingPracticeView: View {
                     Text("逐词评测")
                         .font(.caption.bold())
                         .foregroundColor(.secondary)
-                    let columns = [GridItem(.adaptive(minimum: 60), spacing: 8)]
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                    FlowLayout(spacing: 8) {
                         ForEach(result.wordScores) { ws in
                             Text(ws.word.isEmpty ? (ws.recognized ?? "") : ws.word)
                                 .font(.body.bold())
+                                .lineLimit(1)
+                                .fixedSize()
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background(ws.isCorrect ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
@@ -582,6 +641,12 @@ struct SpeakingPracticeView: View {
 
     private func nextQuestion() {
         audio.stopPlaying()
+        // 结算本题：仅以最终结果计分（重试不重复计算）
+        if let result = pronunciationResult {
+            let isCorrect = result.overallScore >= 60
+            if isCorrect { correctCount += 1 }
+            onAnswer?(questions[currentIndex].id, isCorrect)
+        }
         if currentIndex < questions.count - 1 {
             currentIndex += 1
             isRecording = false
