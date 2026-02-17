@@ -272,10 +272,10 @@ final class APIService {
 
     // MARK: - 2. 今日推荐套餐
 
-    func fetchTodayPackage(textbookCode: String) async throws -> TodayPackageResponse {
+    func fetchTodayPackage(textbookCode: String) async throws -> (response: TodayPackageResponse, rawData: Data) {
         let path = "/api/v1/practice/today-package?textbookCode=\(textbookCode)"
         let request = makeRequest(path: path)
-        return try await fetch(TodayPackageResponse.self, request: request)
+        return try await fetchWithRawData(TodayPackageResponse.self, request: request)
     }
 
     // MARK: - 3. 学习统计

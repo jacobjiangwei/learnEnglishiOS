@@ -18,6 +18,7 @@ class HomeViewModel: ObservableObject {
     var hasLoaded = false
 
     private let api = APIService.shared
+    private let packageStore = TodayPackageStore.shared
 
     func load(textbookCode: String, force: Bool = false) {
         guard force || !hasLoaded else { return }
@@ -26,28 +27,25 @@ class HomeViewModel: ObservableObject {
         errorMessage = nil
 
         Task {
-            // 并发加载套餐和统计
-            async let pkgTask = api.fetchTodayPackage(textbookCode: textbookCode)
-            async let statsTask = api.fetchStats(days: 30)
-
-            do {
-                let pkgResp = try await pkgTask
-                todayPackage = TodayPackage(
-                    date: Date(),
-                    level: textbookCode,
-                    items: pkgResp.items.compactMap { item in
-                        guard let type = QuestionType.from(apiKey: item.type) else { return nil }
-                        return PackageItem(type: type, count: item.count, weight: item.weight)
-                    },
-                    estimatedMinutes: pkgResp.estimatedMinutes
-                )
-            } catch {
-                print("加载今日套餐失败: \(error)")
-                // 套餐加载失败不阻塞首页
+            // 1. 今日套餐：优先用本地缓存
+            if packageStore.hasTodayCache, let cached = packageStore.cached {
+                todayPackage = buildPackageFromCache(cached)
+            } else {
+                // 无缓存或非今天 → 从 API 拉取并缓存
+                do {
+                    let (pkgResp, rawData) = try await api.fetchTodayPackage(textbookCode: textbookCode)
+                    packageStore.cacheFromAPI(response: pkgResp, rawData: rawData, textbookCode: textbookCode)
+                    if let cached = packageStore.cached {
+                        todayPackage = buildPackageFromCache(cached)
+                    }
+                } catch {
+                    print("加载今日套餐失败: \(error)")
+                }
             }
 
+            // 2. 统计照常拉
             do {
-                stats = try await statsTask
+                stats = try await api.fetchStats(days: 30)
             } catch {
                 print("加载统计失败: \(error)")
             }
@@ -55,6 +53,25 @@ class HomeViewModel: ObservableObject {
             isLoading = false
             hasLoaded = true
         }
+    }
+
+    /// 从缓存刷新本地 UI 状态（不请求 API）
+    func refreshFromCache() {
+        if let cached = packageStore.cached {
+            todayPackage = buildPackageFromCache(cached)
+        }
+    }
+
+    private func buildPackageFromCache(_ cached: CachedTodayPackage) -> TodayPackage {
+        TodayPackage(
+            date: Date(),
+            level: cached.textbookCode,
+            items: cached.items.compactMap { item in
+                guard let type = QuestionType.from(apiKey: item.questionType) else { return nil }
+                return PackageItem(type: type, count: item.count, weight: item.weight)
+            },
+            estimatedMinutes: cached.estimatedMinutes
+        )
     }
 
     var streak: Int { stats?.currentStreak ?? 0 }
@@ -77,11 +94,11 @@ struct HomeView: View {
                     // 1. 顶部状态
                     headerSection
 
-                    // 2. 今日推荐套餐（大卡）
+                    // 2. 每日挑战（大卡）
                     if let package = vm.todayPackage {
                         TodayPackageCardView(package: package)
                     } else if vm.isLoading {
-                        ProgressView("加载今日套餐…")
+                        ProgressView("加载每日挑战…")
                             .frame(height: 160)
                     }
 
@@ -104,7 +121,11 @@ struct HomeView: View {
                 AnalyticsService.shared.trackScreenView("HomeView")
             }
             .onReceive(NotificationCenter.default.publisher(for: .practiceResultsSubmitted)) { _ in
-                vm.load(textbookCode: textbookCode, force: true)
+                vm.refreshFromCache()
+                // 只刷新统计
+                Task {
+                    vm.stats = try? await APIService.shared.fetchStats(days: 30)
+                }
             }
         }
         .navigationViewStyle(.stack)
@@ -119,8 +140,13 @@ struct HomeView: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 if let package = vm.todayPackage {
-                    Text("今天完成 \(package.totalQuestions) 题即达成目标")
-                        .font(.headline)
+                    if TodayPackageStore.shared.allCompleted {
+                        Text("今日挑战已全部完成 🏆")
+                            .font(.headline)
+                    } else {
+                        Text("今天完成 \(package.totalQuestions) 题即达成目标")
+                            .font(.headline)
+                    }
                 } else {
                     Text("开始今天的学习吧")
                         .font(.headline)

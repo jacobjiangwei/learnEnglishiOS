@@ -133,9 +133,9 @@ class PracticeViewModel: ObservableObject {
 
     // MARK: - 从本地 JSON 回放
 
-    func loadFromRawJSON(type: QuestionType, data: Data) {
+    func loadFromRawJSON(type: QuestionType, data: Data, replay: Bool = true) {
         currentQuestionType = type.apiKey
-        isReplayMode = true
+        isReplayMode = replay
         let decoder = JSONDecoder()
 
         switch type {

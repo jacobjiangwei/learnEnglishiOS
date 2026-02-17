@@ -14,12 +14,21 @@ namespace Volingo.Api.Services;
 public class CosmosQuestionService : IQuestionService
 {
     private readonly Container _container;
+    private readonly Container _dailyPackagesContainer;
+
+    private static readonly TimeZoneInfo ChinaTimeZone =
+        TimeZoneInfo.FindSystemTimeZoneById("Asia/Shanghai");
 
     public CosmosQuestionService(CosmosClient cosmos, IConfiguration config)
     {
         var db = config["CosmosDb:DatabaseName"] ?? "volingo";
         _container = cosmos.GetContainer(db, "questions");
+        _dailyPackagesContainer = cosmos.GetContainer(db, "dailyPackages");
     }
+
+    /// <summary>China-time date string for "today".</summary>
+    private static string TodayChinaDate() =>
+        TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ChinaTimeZone).ToString("yyyy-MM-dd");
 
     public async Task<(List<object> Questions, int Remaining)> GetQuestionsAsync(
         string textbookCode, string questionType, int count, IReadOnlySet<string> completedIds)
@@ -60,31 +69,55 @@ public class CosmosQuestionService : IQuestionService
         return (result, remaining);
     }
 
-    public async Task<TodayPackageResponse> GetTodayPackageAsync(
-        string textbookCode, IReadOnlySet<string> completedIds)
+    public async Task<TodayPackageResponse> GetTodayPackageAsync(string textbookCode)
     {
-        var types = new (string Type, int Count, double Weight)[]
-        {
-            ("multipleChoice", 10, 0.35),
-            ("cloze", 5, 0.20),
-            ("reading", 3, 0.20),
-            ("listening", 3, 0.15),
-            ("vocabulary", 5, 0.10)
-        };
+        var dateStr = TodayChinaDate();
+        var pk = new PartitionKey(textbookCode);
 
-        var items = new List<PackageItem>();
-        foreach (var (type, count, weight) in types)
+        // 1. 尝试读取已有的每日包
+        try
         {
-            var (questions, _) = await GetQuestionsAsync(textbookCode, type, count, completedIds);
-            if (questions.Count > 0)
-                items.Add(new PackageItem(type, questions.Count, weight, questions));
+            var existing = await _dailyPackagesContainer.ReadItemAsync<DailyPackageDocument>(
+                dateStr, pk);
+            return existing.Resource.ToResponse();
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // 不存在 → 生成
         }
 
-        return new TodayPackageResponse(
-            Date: DateTime.UtcNow.ToString("yyyy-MM-dd"),
+        // 2. 懒生成今日包（生成逻辑待实现，暂返回空包）
+        var package = await GenerateDailyPackageAsync(textbookCode, dateStr);
+        var doc = DailyPackageDocument.FromResponse(package);
+
+        // 3. 写入 Cosmos（处理并发：如果另一个请求已经写入，读取它的结果）
+        try
+        {
+            await _dailyPackagesContainer.CreateItemAsync(doc, pk);
+        }
+        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Conflict)
+        {
+            // 并发竞争，另一个请求已写入 → 读取它的版本
+            var existing = await _dailyPackagesContainer.ReadItemAsync<DailyPackageDocument>(
+                dateStr, pk);
+            return existing.Resource.ToResponse();
+        }
+
+        return package;
+    }
+
+    /// <summary>
+    /// 生成每日统一赛题包（TODO: 接入 AI 出题 / 题库抽取）。
+    /// 当前返回空包。
+    /// </summary>
+    private Task<TodayPackageResponse> GenerateDailyPackageAsync(string textbookCode, string date)
+    {
+        var package = new TodayPackageResponse(
+            Date: date,
             TextbookCode: textbookCode,
-            EstimatedMinutes: 15,
-            Items: items);
+            EstimatedMinutes: 0,
+            Items: new List<PackageItem>());
+        return Task.FromResult(package);
     }
 
     private static string GetId(JsonElement j) =>

@@ -198,7 +198,7 @@ struct PackageItem: Identifiable {
     let weight: Double      // 权重（0-1）
 }
 
-/// 今日推荐套餐
+/// 今日挑战（每日统一赛题包）
 struct TodayPackage: Identifiable {
     let id = UUID()
     let date: Date
@@ -216,6 +216,38 @@ struct TodayPackage: Identifiable {
         items.prefix(3)
             .map { "\($0.type.rawValue) \($0.count)题" }
             .joined(separator: " · ")
+    }
+
+    /// 用于展示的教材/年级名（从 textbookCode 解析）
+    var levelDisplayName: String {
+        // textbookCode 如 "juniorPEP-7a" → 提取关键信息
+        let parts = level.components(separatedBy: "-")
+        let series = parts.first ?? level
+        let gradeInfo = parts.count > 1 ? parts[1] : ""
+        
+        let seriesName: String
+        switch series {
+        case "primaryPEP":    seriesName = "小学·人教版"
+        case "primaryFLTRP":  seriesName = "小学·外研版"
+        case "primaryYilin":  seriesName = "小学·译林版"
+        case "juniorPEP":     seriesName = "初中·人教版"
+        case "juniorFLTRP":   seriesName = "初中·外研版"
+        case "juniorYilin":   seriesName = "初中·译林版"
+        case "seniorPEP":     seriesName = "高中·人教版"
+        case "seniorFLTRP":   seriesName = "高中·外研版"
+        case "seniorYilin":   seriesName = "高中·译林版"
+        default:              seriesName = series
+        }
+        
+        if gradeInfo.isEmpty { return seriesName }
+        
+        // "7a" → "七年级上"
+        let gradeChar = gradeInfo.prefix(while: { $0.isNumber })
+        let termChar = gradeInfo.last
+        let gradeNames = ["1":"一","2":"二","3":"三","4":"四","5":"五","6":"六","7":"七","8":"八","9":"九","10":"十","11":"十一","12":"十二"]
+        let gradeName = gradeNames[String(gradeChar)] ?? String(gradeChar)
+        let termName = termChar == "a" ? "上" : "下"
+        return "\(gradeName)年级\(termName) · \(seriesName)"
     }
 }
 

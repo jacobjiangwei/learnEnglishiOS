@@ -8,6 +8,22 @@ public record ReadingQuestionsResponse(string QuestionType, string TextbookCode,
 public record TodayPackageResponse(string Date, string TextbookCode, int EstimatedMinutes, List<PackageItem> Items);
 public record PackageItem(string Type, int Count, double Weight, List<object> Questions);
 
+/// <summary>
+/// Cosmos DB document for cached daily packages.
+/// id = date string (yyyy-MM-dd), partition key = textbookCode.
+/// </summary>
+public record DailyPackageDocument(
+    string id,
+    string TextbookCode,
+    int EstimatedMinutes,
+    List<PackageItem> Items)
+{
+    public TodayPackageResponse ToResponse() => new(id, TextbookCode, EstimatedMinutes, Items);
+
+    public static DailyPackageDocument FromResponse(TodayPackageResponse r) =>
+        new(r.Date, r.TextbookCode, r.EstimatedMinutes, r.Items);
+}
+
 // ── Practice: Submit ──
 public record SubmitRequest(List<SubmitResultItem> Results);
 public record SubmitResultItem(string QuestionId, bool IsCorrect, string? QuestionType = null);

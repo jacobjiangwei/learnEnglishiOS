@@ -65,6 +65,8 @@ struct PracticeRouterView: View {
         .onDisappear {
             if !vm.isReplayMode {
                 vm.saveToHistory()
+                // 标记今日推荐中该题型已完成
+                TodayPackageStore.shared.markCompleted(questionType: questionType.apiKey)
             }
             Task { await vm.submitResults() }
         }

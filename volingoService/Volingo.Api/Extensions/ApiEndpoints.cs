@@ -32,17 +32,11 @@ public static class ApiEndpoints
         .WithName("GetQuestions")
         .WithTags("Practice");
 
-        // ── 3.2 今日推荐套餐 ──
-        app.MapGet("/api/v1/practice/today-package", async (HttpContext ctx,
-            IQuestionService questions, ISubmitResultService submits,
-            string textbookCode) =>
+        // ── 3.2 今日推荐套餐（全等级统一，懒生成，中国时间） ──
+        app.MapGet("/api/v1/practice/today-package", async (
+            IQuestionService questions, string textbookCode) =>
         {
-            var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return MissingDeviceIdResult();
-
-            var completedIds = await submits.GetCompletedIdsAsync(deviceId);
-            var package = await questions.GetTodayPackageAsync(textbookCode, completedIds);
-
+            var package = await questions.GetTodayPackageAsync(textbookCode);
             return Results.Ok(package);
         })
         .WithName("GetTodayPackage")
