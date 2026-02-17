@@ -63,6 +63,9 @@ struct PracticeRouterView: View {
             AnalyticsService.shared.trackScreenView("Practice_\(questionType.rawValue)")
         }
         .onDisappear {
+            if !vm.isReplayMode {
+                vm.saveToHistory()
+            }
             Task { await vm.submitResults() }
         }
     }

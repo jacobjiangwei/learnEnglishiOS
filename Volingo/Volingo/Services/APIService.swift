@@ -82,6 +82,12 @@ final class APIService {
 
     /// 发起请求并解码 JSON 响应
     private func fetch<T: Decodable>(_ type: T.Type, request: URLRequest) async throws -> T {
+        let (decoded, _) = try await fetchWithRawData(type, request: request)
+        return decoded
+    }
+
+    /// 发起请求，返回解码结果 + 原始 Data（用于本地存储历史）
+    private func fetchWithRawData<T: Decodable>(_ type: T.Type, request: URLRequest) async throws -> (T, Data) {
         let start = CFAbsoluteTimeGetCurrent()
 
         let data: Data
@@ -106,7 +112,8 @@ final class APIService {
         }
 
         do {
-            return try decoder.decode(type, from: data)
+            let decoded = try decoder.decode(type, from: data)
+            return (decoded, data)
         } catch {
             #if DEBUG
             print("[API] ❌ 解码失败(\(T.self)): \(error)")
@@ -196,70 +203,70 @@ final class APIService {
         questionType: String,
         textbookCode: String,
         count: Int = 5
-    ) async throws -> (questions: [T], remaining: Int) {
+    ) async throws -> (questions: [T], remaining: Int, rawData: Data) {
         let path = "/api/v1/practice/questions?questionType=\(questionType)&textbookCode=\(textbookCode)&count=\(count)"
         let request = makeRequest(path: path)
-        let resp = try await fetch(QuestionsResponse<[T]>.self, request: request)
-        return (resp.questions, resp.remaining ?? 0)
+        let (resp, data) = try await fetchWithRawData(QuestionsResponse<[T]>.self, request: request)
+        return (resp.questions, resp.remaining ?? 0, data)
     }
 
     /// 获取阅读理解题（passages 结构）
     func fetchReadingQuestions(
         textbookCode: String,
         count: Int = 3
-    ) async throws -> ReadingQuestionsResponse {
+    ) async throws -> (response: ReadingQuestionsResponse, rawData: Data) {
         let path = "/api/v1/practice/questions?questionType=reading&textbookCode=\(textbookCode)&count=\(count)"
         let request = makeRequest(path: path)
-        return try await fetch(ReadingQuestionsResponse.self, request: request)
+        return try await fetchWithRawData(ReadingQuestionsResponse.self, request: request)
     }
 
     // MARK: - 便捷方法：按题型获取
 
-    func fetchMCQQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIMCQQuestion], remaining: Int) {
+    func fetchMCQQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIMCQQuestion], remaining: Int, rawData: Data) {
         return try await fetchQuestions(questionType: "multipleChoice", textbookCode: textbookCode, count: count)
     }
 
-    func fetchClozeQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIClozeQuestion], remaining: Int) {
+    func fetchClozeQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIClozeQuestion], remaining: Int, rawData: Data) {
         return try await fetchQuestions(questionType: "cloze", textbookCode: textbookCode, count: count)
     }
 
-    func fetchTranslationQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APITranslationQuestion], remaining: Int) {
+    func fetchTranslationQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APITranslationQuestion], remaining: Int, rawData: Data) {
         return try await fetchQuestions(questionType: "translation", textbookCode: textbookCode, count: count)
     }
 
-    func fetchRewritingQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIRewritingQuestion], remaining: Int) {
+    func fetchRewritingQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIRewritingQuestion], remaining: Int, rawData: Data) {
         return try await fetchQuestions(questionType: "rewriting", textbookCode: textbookCode, count: count)
     }
 
-    func fetchErrorCorrectionQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIErrorCorrectionQuestion], remaining: Int) {
+    func fetchErrorCorrectionQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIErrorCorrectionQuestion], remaining: Int, rawData: Data) {
         return try await fetchQuestions(questionType: "errorCorrection", textbookCode: textbookCode, count: count)
     }
 
-    func fetchOrderingQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIOrderingQuestion], remaining: Int) {
+    func fetchOrderingQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIOrderingQuestion], remaining: Int, rawData: Data) {
         return try await fetchQuestions(questionType: "sentenceOrdering", textbookCode: textbookCode, count: count)
     }
 
-    func fetchListeningQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIListeningQuestion], remaining: Int) {
+    func fetchListeningQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIListeningQuestion], remaining: Int, rawData: Data) {
         return try await fetchQuestions(questionType: "listening", textbookCode: textbookCode, count: count)
     }
 
-    func fetchSpeakingQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APISpeakingQuestion], remaining: Int) {
+    func fetchSpeakingQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APISpeakingQuestion], remaining: Int, rawData: Data) {
         return try await fetchQuestions(questionType: "speaking", textbookCode: textbookCode, count: count)
     }
 
-    func fetchWritingQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIWritingQuestion], remaining: Int) {
+    func fetchWritingQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIWritingQuestion], remaining: Int, rawData: Data) {
         return try await fetchQuestions(questionType: "writing", textbookCode: textbookCode, count: count)
     }
 
-    func fetchVocabularyQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIVocabularyQuestion], remaining: Int) {
+    func fetchVocabularyQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIVocabularyQuestion], remaining: Int, rawData: Data) {
         return try await fetchQuestions(questionType: "vocabulary", textbookCode: textbookCode, count: count)
     }
 
-    func fetchGrammarQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIGrammarQuestion], remaining: Int) {
+    func fetchGrammarQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIGrammarQuestion], remaining: Int, rawData: Data) {
         return try await fetchQuestions(questionType: "grammar", textbookCode: textbookCode, count: count)
     }
 
-    func fetchScenarioQuestions(scenarioType: String, textbookCode: String, count: Int = 5) async throws -> (questions: [APIScenarioQuestion], remaining: Int) {
+    func fetchScenarioQuestions(scenarioType: String, textbookCode: String, count: Int = 5) async throws -> (questions: [APIScenarioQuestion], remaining: Int, rawData: Data) {
         return try await fetchQuestions(questionType: scenarioType, textbookCode: textbookCode, count: count)
     }
 

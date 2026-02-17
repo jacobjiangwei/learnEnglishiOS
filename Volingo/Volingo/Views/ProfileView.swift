@@ -95,6 +95,20 @@ struct ProfileView: View {
                 }
 
                 // MARK: 当前学习目标
+                Section(header: Text("历史记录")) {
+                    NavigationLink(destination: PracticeHistoryView()) {
+                        HStack {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .foregroundColor(.blue)
+                            Text("练习历史")
+                            Spacer()
+                            Text("\(PracticeHistoryStore.shared.sessions.count) 条")
+                                .foregroundColor(.secondary)
+                                .font(.subheadline)
+                        }
+                    }
+                }
+
                 Section(header: Text("当前学习目标")) {
                     HStack {
                         Text("已定级")
