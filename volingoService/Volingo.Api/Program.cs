@@ -33,6 +33,7 @@ builder.Services.AddScoped<IQuestionService, CosmosQuestionService>();
 builder.Services.AddScoped<ISubmitResultService, CosmosSubmitResultService>();
 builder.Services.AddScoped<IWordbookService, CosmosWordbookService>();
 builder.Services.AddScoped<IReportService, CosmosReportService>();
+builder.Services.AddScoped<IDictionaryService, DictionaryService>();
 
 // Admin services for textbook import & AI analysis
 builder.Services.AddScoped<ITextbookService, CosmosTextbookService>();

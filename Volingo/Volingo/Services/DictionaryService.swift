@@ -2,7 +2,8 @@
 //  DictionaryService.swift
 //  Volingo
 //
-//  Created by jacob on 2025/8/24.
+//  Rewritten for new architecture: local SQLite cache (wordCache.db) + backend API + AI fallback.
+//  Old learnEnglishDict.db has been removed.
 //
 
 import Foundation
@@ -10,272 +11,163 @@ import SQLite3
 
 let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-// MARK: - 词典服务
+// MARK: - 词典服务（新架构）
+// 查词流程: ① 本地 wordCache.db → ② 后端 API → ③ 写入本地缓存
 class DictionaryService {
     static let shared = DictionaryService()
     private var database: OpaquePointer?
-    private let databaseName = "learnEnglishDict.db"
+    private let cacheDbName = "wordCache.db"
     
     private init() {
-        openDatabase()
+        openOrCreateCacheDatabase()
     }
     
     deinit {
-        closeDatabaseSync()
+        if let db = database {
+            sqlite3_close(db)
+        }
     }
     
-    // MARK: - 数据库连接管理
-    private func openDatabase() {
-        guard let databasePath = getDatabasePath() else {
-            print("❌ 无法找到数据库文件路径")
+    // MARK: - 缓存数据库管理
+    
+    /// 获取 Documents 目录下的缓存数据库路径（可写）
+    private func getCacheDatabasePath() -> String {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        return documentsPath.appendingPathComponent(cacheDbName).path
+    }
+    
+    /// 打开或创建本地缓存数据库
+    private func openOrCreateCacheDatabase() {
+        let path = getCacheDatabasePath()
+        
+        if sqlite3_open(path, &database) != SQLITE_OK {
+            print("❌ 无法打开/创建缓存数据库: \(String(cString: sqlite3_errmsg(database)))")
+            database = nil
             return
         }
         
-        if sqlite3_open(databasePath.cString(using: .utf8), &database) != SQLITE_OK {
-            print("❌ 无法打开数据库: \(String(cString: sqlite3_errmsg(database)))")
-            database = nil
+        // 创建缓存表（如果不存在）
+        let createTableSQL = """
+            CREATE TABLE IF NOT EXISTS word_cache (
+                word TEXT PRIMARY KEY,
+                json_data TEXT NOT NULL,
+                cached_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            """
+        
+        if sqlite3_exec(database, createTableSQL, nil, nil, nil) != SQLITE_OK {
+            print("❌ 创建缓存表失败: \(String(cString: sqlite3_errmsg(database)))")
         } else {
-            print("✅ 数据库连接成功")
+            print("✅ 词典缓存数据库就绪")
         }
     }
     
-    private func closeDatabaseSync() {
-        if sqlite3_close(database) != SQLITE_OK {
-            print("❌ 无法关闭数据库: \(String(cString: sqlite3_errmsg(database)))")
-        }
-        database = nil
-    }
+    // MARK: - 查词（核心方法）
     
-    @MainActor
-    private func closeDatabase() {
-        closeDatabaseSync()
-    }
-    
-    private func getDatabasePath() -> String? {
-        // 首先尝试从Bundle中获取数据库文件
-        if let bundlePath = Bundle.main.path(forResource: "learnEnglishDict", ofType: "db") {
-            return bundlePath
-        }
-        
-        // 如果Bundle中没有，尝试从Resources目录获取
-        if let bundlePath = Bundle.main.path(forResource: "learnEnglishDict", ofType: "db", inDirectory: "Resources") {
-            return bundlePath
-        }
-        
-        return nil
-    }
-    
-    // MARK: - 单词查询功能
+    /// 查询单词：本地缓存优先 → 后端 API 兜底
     func searchWord(_ query: String) async throws -> [Word] {
-        return try await withCheckedThrowingContinuation { continuation in
-            Task {
-                do {
-                    let words = try await self.performWordSearch(query)
-                    continuation.resume(returning: words)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return [] }
+        
+        // ① 先查本地缓存
+        if let cached = lookupCache(trimmed) {
+            return [cached]
         }
+        
+        // ② 本地未命中，调后端 API
+        let word = try await fetchFromBackend(trimmed)
+        
+        // ③ 写入本地缓存（永久保存）
+        saveToCache(word)
+        
+        return [word]
     }
     
-    private func performWordSearch(_ query: String) async throws -> [Word] {
-        return try await Task.detached { [weak self] in
-            guard let self = self else {
-                throw WordSearchError.databaseNotFound
-            }
-            
-            return try await MainActor.run {
-                guard let database = self.database else {
-                    throw WordSearchError.databaseNotFound
-                }
-                
-                let searchQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                guard !searchQuery.isEmpty else {
-                    throw WordSearchError.invalidQuery
-                }
-                
-                // SQL查询语句 - 支持精确匹配和前缀匹配
-                let sql = """
-                    SELECT word, json_data, A1, A2, B1, B2, C1, Middle_School, High_School, 
-                           CET4, CET6, Graduate_Exam, TOEFL, SAT
-                    FROM dictionary 
-                    WHERE word = ? OR word LIKE ? 
-                    ORDER BY 
-                        CASE WHEN word = ? THEN 0 ELSE 1 END,
-                        LENGTH(word),
-                        word
-                    LIMIT 50;
-                    """
-                
-                var statement: OpaquePointer?
-                var words: [Word] = []
-                
-                defer {
-                    sqlite3_finalize(statement)
-                }
-                
-                if sqlite3_prepare_v2(database, sql, -1, &statement, nil) != SQLITE_OK {
-                    let errorMessage = String(cString: sqlite3_errmsg(database))
-                    throw WordSearchError.databaseError(errorMessage)
-                }
-                
-                // 绑定查询参数
-                let likePattern = "\(searchQuery)%"
-
-                _ = searchQuery.withCString { cString in
-                    sqlite3_bind_text(statement, 1, cString, -1, SQLITE_TRANSIENT)
-                }
-                _ = likePattern.withCString { cString in
-                    sqlite3_bind_text(statement, 2, cString, -1, SQLITE_TRANSIENT)
-                }
-                _ = searchQuery.withCString { cString in
-                    sqlite3_bind_text(statement, 3, cString, -1, SQLITE_TRANSIENT)
-                }
-                
-                while sqlite3_step(statement) == SQLITE_ROW {
-                    if let record = self.parseWordRecord(from: statement) {
-                        do {
-                            let word = try self.parseWordFromJSON(record: record)
-                            words.append(word)
-                        } catch {
-                            print("⚠️ 解析单词数据失败: \(record.word), 错误: \(error)")
-                            continue
-                        }
-                    }
-                }
-                
-                return words
-            }
-        }.value
-    }
-    
+    /// 获取单词详情（精确匹配）
     func getWordDetails(_ wordQuery: String) async throws -> Word? {
         let results = try await searchWord(wordQuery)
         return results.first { $0.word.lowercased() == wordQuery.lowercased() }
     }
     
-    // MARK: - 数据解析
-    private func parseWordRecord(from statement: OpaquePointer?) -> WordDatabaseRecord? {
-        guard let statement = statement else { return nil }
+    // MARK: - 本地缓存操作
+    
+    /// 从本地 SQLite 缓存查询
+    private func lookupCache(_ word: String) -> Word? {
+        guard let db = database else { return nil }
         
-        guard let wordCString = sqlite3_column_text(statement, 0),
-              let jsonCString = sqlite3_column_text(statement, 1) else {
+        let sql = "SELECT json_data FROM word_cache WHERE word = ? LIMIT 1;"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return nil }
+        
+        _ = word.withCString { cString in
+            sqlite3_bind_text(statement, 1, cString, -1, SQLITE_TRANSIENT)
+        }
+        
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              let jsonCString = sqlite3_column_text(statement, 0) else {
             return nil
         }
         
-        let word = String(cString: wordCString)
-        let jsonData = String(cString: jsonCString)
+        let jsonString = String(cString: jsonCString)
+        guard let jsonData = jsonString.data(using: .utf8) else { return nil }
         
-        // 解析词汇级别
-        let levels = WordLevels(
-            a1: sqlite3_column_int(statement, 2) != 0,
-            a2: sqlite3_column_int(statement, 3) != 0,
-            b1: sqlite3_column_int(statement, 4) != 0,
-            b2: sqlite3_column_int(statement, 5) != 0,
-            c1: sqlite3_column_int(statement, 6) != 0,
-            middleSchool: sqlite3_column_int(statement, 7) != 0,
-            highSchool: sqlite3_column_int(statement, 8) != 0,
-            cet4: sqlite3_column_int(statement, 9) != 0,
-            cet6: sqlite3_column_int(statement, 10) != 0,
-            graduateExam: sqlite3_column_int(statement, 11) != 0,
-            toefl: sqlite3_column_int(statement, 12) != 0,
-            sat: sqlite3_column_int(statement, 13) != 0
-        )
-        
-        return WordDatabaseRecord(word: word, jsonData: jsonData, levels: levels)
+        return try? JSONDecoder().decode(Word.self, from: jsonData)
     }
     
-    private func parseWordFromJSON(record: WordDatabaseRecord) throws -> Word {
-        guard let jsonData = record.jsonData.data(using: .utf8) else {
-            throw WordSearchError.decodingError("无法转换JSON数据")
+    /// 将词条写入本地缓存（永久保存）
+    private func saveToCache(_ word: Word) {
+        guard let db = database else { return }
+        guard let jsonData = try? JSONEncoder().encode(word),
+              let jsonString = String(data: jsonData, encoding: .utf8) else { return }
+        
+        let sql = "INSERT OR REPLACE INTO word_cache (word, json_data) VALUES (?, ?);"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return }
+        
+        let wordKey = word.word.lowercased()
+        _ = wordKey.withCString { cString in
+            sqlite3_bind_text(statement, 1, cString, -1, SQLITE_TRANSIENT)
+        }
+        _ = jsonString.withCString { cString in
+            sqlite3_bind_text(statement, 2, cString, -1, SQLITE_TRANSIENT)
         }
         
-        do {
-            let decoder = JSONDecoder()
-            let word = try decoder.decode(Word.self, from: jsonData)
-            
-            // 添加词汇级别信息
-            let wordWithLevels = Word(
-                word: word.word,
-                lemma: word.lemma,
-                isDerived: word.isDerived,
-                phonetic: word.phonetic,
-                senses: word.senses,
-                exchange: word.exchange,
-                synonyms: word.synonyms.filter { !$0.isEmpty },
-                antonyms: word.antonyms.filter { !$0.isEmpty },
-                levels: record.levels
-            )
-            
-            return wordWithLevels
-        } catch {
-            throw WordSearchError.decodingError("JSON解析失败: \(error.localizedDescription)")
+        if sqlite3_step(statement) != SQLITE_DONE {
+            print("⚠️ 缓存写入失败: \(String(cString: sqlite3_errmsg(db)))")
         }
     }
     
-    // MARK: - 辅助功能
-    func searchWordsByLevel(_ level: String, limit: Int = 100) async throws -> [Word] {
-        return try await withCheckedThrowingContinuation { continuation in
-            Task {
-                do {
-                    let words = try await self.performLevelSearch(level, limit: limit)
-                    continuation.resume(returning: words)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
+    // MARK: - 后端 API 调用
+    
+    /// 从后端 API 获取词条 (GET /api/v1/dictionary/{word})
+    private func fetchFromBackend(_ word: String) async throws -> Word {
+        return try await APIService.shared.lookupWord(word)
     }
     
-    private func performLevelSearch(_ level: String, limit: Int) async throws -> [Word] {
-        return try await Task.detached { [weak self] in
-            guard let self = self else {
-                throw WordSearchError.databaseNotFound
-            }
-            
-            return try await MainActor.run {
-                guard let database = self.database else {
-                    throw WordSearchError.databaseNotFound
-                }
-                
-                let sql = """
-                    SELECT word, json_data, A1, A2, B1, B2, C1, Middle_School, High_School, 
-                           CET4, CET6, Graduate_Exam, TOEFL, SAT
-                    FROM dictionary 
-                    WHERE \(level) = 1
-                    ORDER BY word
-                    LIMIT ?;
-                    """
-                
-                var statement: OpaquePointer?
-                var words: [Word] = []
-                
-                defer {
-                    sqlite3_finalize(statement)
-                }
-                
-                if sqlite3_prepare_v2(database, sql, -1, &statement, nil) != SQLITE_OK {
-                    let errorMessage = String(cString: sqlite3_errmsg(database))
-                    throw WordSearchError.databaseError(errorMessage)
-                }
-                
-                sqlite3_bind_int(statement, 1, Int32(limit))
-                
-                while sqlite3_step(statement) == SQLITE_ROW {
-                    if let record = self.parseWordRecord(from: statement) {
-                        do {
-                            let word = try self.parseWordFromJSON(record: record)
-                            words.append(word)
-                        } catch {
-                            continue
-                        }
-                    }
-                }
-                
-                return words
-            }
-        }.value
+    // MARK: - 缓存管理
+    
+    /// 清除所有本地缓存
+    func clearCache() {
+        guard let db = database else { return }
+        sqlite3_exec(db, "DELETE FROM word_cache;", nil, nil, nil)
+        print("🗑️ 词典缓存已清除")
+    }
+    
+    /// 获取缓存词条数量
+    func getCachedWordCount() -> Int {
+        guard let db = database else { return 0 }
+        
+        let sql = "SELECT COUNT(*) FROM word_cache;"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK,
+              sqlite3_step(statement) == SQLITE_ROW else { return 0 }
+        
+        return Int(sqlite3_column_int(statement, 0))
     }
 }
-

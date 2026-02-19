@@ -42,3 +42,36 @@ public record WordbookAddRequest(string Word, string? Phonetic, List<DefinitionI
 public record DefinitionItem(string PartOfSpeech, string Meaning, string? Example, string? ExampleTranslation);
 public record WordbookEntry(string Id, string Word, string? Phonetic, List<DefinitionItem> Definitions, string AddedAt);
 public record WordbookListResponse(int Total, List<WordbookEntry> Words);
+
+// ── Dictionary ──
+public record DictionaryResponse(
+    string Word,
+    string? Phonetic,
+    List<DictionarySenseDto> Senses,
+    DictionaryExchangeDto? Exchange,
+    List<string> Synonyms,
+    List<string> Antonyms,
+    List<RelatedPhraseDto> RelatedPhrases,
+    string? UsageNotes
+);
+
+public record DictionarySenseDto(
+    string Pos,
+    List<string> Definitions,
+    List<string> Translations,
+    List<DictionaryExampleDto> Examples
+);
+
+public record DictionaryExampleDto(string En, string Zh);
+
+public record DictionaryExchangeDto(
+    string? PastTense,
+    string? PastParticiple,
+    string? PresentParticiple,
+    string? ThirdPersonSingular,
+    string? Plural,
+    string? Comparative,
+    string? Superlative
+);
+
+public record RelatedPhraseDto(string Phrase, string Meaning);

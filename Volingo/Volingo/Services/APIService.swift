@@ -323,4 +323,14 @@ final class APIService {
         let request = makeRequest(path: "/api/v1/wordbook/list")
         return try await fetch(WordbookListResponse.self, request: request)
     }
+
+    // MARK: - 9. 词典查询
+
+    /// 查询单词 (GET /api/v1/dictionary/{word})
+    /// 后端会先查 Cosmos DB 缓存，未命中则 AI 生成
+    func lookupWord(_ word: String) async throws -> Word {
+        let encoded = word.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? word
+        let request = makeRequest(path: "/api/v1/dictionary/\(encoded)")
+        return try await fetch(Word.self, request: request)
+    }
 }

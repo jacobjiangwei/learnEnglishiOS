@@ -24,6 +24,7 @@ public static class CosmosDbExtensions
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("reports", "/deviceId"));
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("dailyPackages", "/textbookCode"));
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("textbook", "/textbook"));
+        await db.CreateContainerIfNotExistsAsync(new ContainerProperties("dictionary", "/word"));
 
         // Seed question bank in background (don't block app.Run())
         var questionsContainer = db.GetContainer("questions");

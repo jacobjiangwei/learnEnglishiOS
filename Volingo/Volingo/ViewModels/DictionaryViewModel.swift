@@ -8,12 +8,27 @@ class DictionaryViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var selectedWord: Word?
-    @Published var savedWordIds: Set<String> = [] // 保存已收藏单词的ID集合
+    @Published var savedWordIds: Set<String> = []
+    @Published var wordbookStats = WordbookStats(
+        totalWords: 0, needReviewCount: 0,
+        newWords: 0, learningWords: 0, reviewingWords: 0, masteredWords: 0
+    )
     
     private let dictionaryService = DictionaryService.shared
     
     init() {
         loadSavedWordIds()
+        refreshWordbookStats()
+    }
+    
+    /// 刷新生词本统计
+    func refreshWordbookStats() {
+        do {
+            wordbookStats = try WordbookService.shared.getWordbookStats()
+            loadSavedWordIds()
+        } catch {
+            print("刷新生词本统计失败: \(error)")
+        }
     }
     
     // MARK: - 搜索功能
@@ -70,7 +85,7 @@ class DictionaryViewModel: ObservableObject {
         do {
             try WordbookService.shared.addWordFromDictionary(word)
             savedWordIds.insert(word.word.lowercased())
-            // 可以添加成功提示
+            refreshWordbookStats()
         } catch {
             errorMessage = "添加到生词本失败: \(error.localizedDescription)"
         }
@@ -83,6 +98,7 @@ class DictionaryViewModel: ObservableObject {
             if let savedWord = savedWords.first(where: { $0.word.word.lowercased() == word.word.lowercased() }) {
                 try WordbookService.shared.deleteWord(savedWord.id)
                 savedWordIds.remove(word.word.lowercased())
+                refreshWordbookStats()
             }
         } catch {
             errorMessage = "从生词本移除失败: \(error.localizedDescription)"

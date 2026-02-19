@@ -12,36 +12,61 @@ import SwiftUI
 struct Word: Codable, Identifiable {
     var id: String { word } // 使用单词本身作为ID
     let word: String
-    let lemma: String
-    let isDerived: Bool
     let phonetic: String?
     let senses: [WordSense]
-    let exchange: WordExchange
+    let exchange: WordExchange?
     let synonyms: [String]
     let antonyms: [String]
+    let relatedPhrases: [RelatedPhrase]
+    let usageNotes: String?
     
-    // 词汇级别标记 (从数据库单独获取，不在JSON中)
+    // 词汇级别标记 (不在后端 JSON 中，本地使用)
     var levels: WordLevels = WordLevels()
     
     enum CodingKeys: String, CodingKey {
-        case word, lemma, phonetic, senses, exchange, synonyms, antonyms
-        case isDerived = "is_derived"
+        case word, phonetic, senses, exchange, synonyms, antonyms
+        case relatedPhrases, usageNotes
         // levels 不包含在JSON编码中
     }
     
+    // 自定义解码器：兼容旧缓存数据（缺失新字段时用默认值）
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        word = try container.decode(String.self, forKey: .word)
+        phonetic = try container.decodeIfPresent(String.self, forKey: .phonetic)
+        senses = try container.decodeIfPresent([WordSense].self, forKey: .senses) ?? []
+        exchange = try container.decodeIfPresent(WordExchange.self, forKey: .exchange)
+        synonyms = try container.decodeIfPresent([String].self, forKey: .synonyms) ?? []
+        antonyms = try container.decodeIfPresent([String].self, forKey: .antonyms) ?? []
+        relatedPhrases = try container.decodeIfPresent([RelatedPhrase].self, forKey: .relatedPhrases) ?? []
+        usageNotes = try container.decodeIfPresent(String.self, forKey: .usageNotes)
+    }
+    
     // 自定义初始化器
-    init(word: String, lemma: String, isDerived: Bool, phonetic: String?, 
-         senses: [WordSense], exchange: WordExchange, synonyms: [String], 
-         antonyms: [String], levels: WordLevels = WordLevels()) {
+    init(word: String, phonetic: String?,
+         senses: [WordSense], exchange: WordExchange?,
+         synonyms: [String], antonyms: [String],
+         relatedPhrases: [RelatedPhrase] = [], usageNotes: String? = nil,
+         levels: WordLevels = WordLevels()) {
         self.word = word
-        self.lemma = lemma
-        self.isDerived = isDerived
         self.phonetic = phonetic
         self.senses = senses
         self.exchange = exchange
         self.synonyms = synonyms
         self.antonyms = antonyms
+        self.relatedPhrases = relatedPhrases
+        self.usageNotes = usageNotes
         self.levels = levels
+    }
+}
+
+struct RelatedPhrase: Codable, Identifiable {
+    var id = UUID()
+    let phrase: String
+    let meaning: String
+    
+    private enum CodingKeys: String, CodingKey {
+        case phrase, meaning
     }
 }
 
@@ -75,15 +100,6 @@ struct WordExchange: Codable {
     let presentParticiple: String?
     let comparative: String?
     let superlative: String?
-    
-    enum CodingKeys: String, CodingKey {
-        case plural
-        case thirdPersonSingular = "third_person_singular"
-        case pastTense = "past_tense"
-        case pastParticiple = "past_participle"
-        case presentParticiple = "present_participle"
-        case comparative, superlative
-    }
 }
 
 struct WordLevels: Codable {
@@ -151,13 +167,6 @@ struct WordLevels: Codable {
         if sat { levels.append("SAT") }
         return levels
     }
-}
-
-// 用于数据库查询的原始结构
-struct WordDatabaseRecord {
-    let word: String
-    let jsonData: String
-    let levels: WordLevels
 }
 
 // MARK: - 查询相关模型

@@ -117,6 +117,22 @@ public static class ApiEndpoints
         .WithName("GetWordbook")
         .WithTags("Wordbook");
 
+        // ── 6.1 词典查询 ──
+        app.MapGet("/api/v1/dictionary/{word}", async (IDictionaryService dictionary, string word) =>
+        {
+            try
+            {
+                var entry = await dictionary.LookupAsync(word);
+                return Results.Ok(entry);
+            }
+            catch (ArgumentException)
+            {
+                return Results.Problem(detail: "Word parameter is invalid.", statusCode: 400, title: "Bad Request");
+            }
+        })
+        .WithName("LookupWord")
+        .WithTags("Dictionary");
+
         return app;
     }
 

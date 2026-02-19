@@ -358,7 +358,7 @@ Rules:
 | 14 | iOS: 最近查过横向 chips | iOS |
 | 15 | iOS: 空状态热门词 / 今日推荐词 | iOS |
 | 16 | 后端: 词条质量审核后台 (人工纠正 AI 错误) | Backend |
-| 17 | iOS: 移除旧 `learnEnglishDict.db`，清理无用代码 | iOS |
+| 17 | iOS: ~~移除旧 `learnEnglishDict.db`，清理无用代码~~ ✅ 已完成 | iOS |
 
 ---
 
