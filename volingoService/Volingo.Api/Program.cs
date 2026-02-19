@@ -34,6 +34,11 @@ builder.Services.AddScoped<ISubmitResultService, CosmosSubmitResultService>();
 builder.Services.AddScoped<IWordbookService, CosmosWordbookService>();
 builder.Services.AddScoped<IReportService, CosmosReportService>();
 
+// Admin services for textbook import & AI analysis
+builder.Services.AddScoped<ITextbookService, CosmosTextbookService>();
+builder.Services.AddSingleton<IDocumentIntelligenceService, AzureDocumentIntelligenceService>();
+builder.Services.AddSingleton<ITextbookAnalyzerService, OpenAITextbookAnalyzerService>();
+
 // JSON serialization — HttpJsonOptions defaults to JsonSerializerDefaults.Web
 // (camelCase + case-insensitive read). We add further customizations:
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -66,6 +71,10 @@ app.MapGet("/", () => Results.Ok(new { service = "Volingo API", version = "1.0.0
 
 // ── Volingo API endpoints (8 endpoints) ──
 app.MapVolingoEndpoints();
+
+// ── Admin endpoints for textbook import & management ──
+app.UseStaticFiles();
+app.MapAdminEndpoints();
 
 // ── Cosmos DB status ──
 app.MapGet("/api/v1/db/status", async (CosmosClient cosmos) =>

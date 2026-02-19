@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volingo 教材管理后台</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f7;
+            color: #1d1d1f;
+            line-height: 1.6;
+        }
+        .container { max-width: 1000px; margin: 0 auto; padding: 24px; }
+        h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+        .subtitle { color: #86868b; margin-bottom: 32px; }
+        .card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .card h2 {
+            font-size: 18px; font-weight: 600; margin-bottom: 16px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .card h2 .step {
+            background: #007aff; color: #fff;
+            width: 28px; height: 28px; border-radius: 50%;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 14px; font-weight: 700;
+        }
+        label { display: block; font-weight: 500; margin-bottom: 6px; font-size: 14px; }
+        select, input[type="file"] {
+            width: 100%; padding: 10px 12px;
+            border: 1px solid #d2d2d7; border-radius: 8px;
+            font-size: 15px; background: #fff; margin-bottom: 12px;
+        }
+        select:focus { outline: none; border-color: #007aff; box-shadow: 0 0 0 3px rgba(0,122,255,0.15); }
+        .row { display: flex; gap: 16px; }
+        .row > * { flex: 1; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 10px 20px; border: none; border-radius: 8px;
+            font-size: 15px; font-weight: 600; cursor: pointer;
+            transition: all 0.15s;
+        }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-primary { background: #007aff; color: #fff; }
+        .btn-primary:hover:not(:disabled) { background: #0062cc; }
+        .btn-success { background: #34c759; color: #fff; }
+        .btn-success:hover:not(:disabled) { background: #28a745; }
+        .btn-danger { background: #ff3b30; color: #fff; }
+        .btn-danger:hover:not(:disabled) { background: #d63027; }
+        .btn-analyze { background: #8b5cf6; color: #fff; }
+        .btn-analyze:hover:not(:disabled) { background: #7c3aed; }
+        .btn-sm { padding: 6px 12px; font-size: 13px; }
+        .preview-box {
+            background: #fafafa; border: 1px solid #e5e5ea; border-radius: 8px;
+            padding: 16px; max-height: 500px; overflow-y: auto;
+            font-family: "SF Mono", Monaco, monospace; font-size: 13px;
+            white-space: pre-wrap; word-break: break-all; display: none;
+        }
+        .status {
+            padding: 12px 16px; border-radius: 8px; margin-top: 12px;
+            font-size: 14px; display: none;
+        }
+        .status.info    { background: #e8f4fd; color: #0a84ff; display: block; }
+        .status.success { background: #e8fae8; color: #248a3d; display: block; }
+        .status.error   { background: #fde8e8; color: #ff3b30; display: block; }
+        .status.loading { background: #fff8e1; color: #ff9500; display: block; }
+        .inventory-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .inventory-table th {
+            text-align: left; padding: 10px 12px;
+            background: #f5f5f7; border-bottom: 2px solid #e5e5ea; font-weight: 600;
+        }
+        .inventory-table td { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }
+        .inventory-table tr:hover td { background: #f5f5f7; }
+        .badge {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-size: 12px; font-weight: 600;
+        }
+        .badge-done { background: #e8fae8; color: #248a3d; }
+        .badge-empty { background: #f0f0f0; color: #86868b; }
+        .badge-ai { background: #f3e8ff; color: #8b5cf6; }
+        .spinner {
+            display: inline-block; width: 16px; height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top: 2px solid #fff; border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .meta { display: flex; gap: 16px; margin-top: 8px; font-size: 13px; color: #86868b; }
+        .meta span { display: flex; align-items: center; gap: 4px; }
+        /* Modal */
+        .modal-overlay {
+            display: none; position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); z-index: 1000; overflow-y: auto;
+        }
+        .modal-overlay.active { display: flex; justify-content: center; padding: 40px 20px; }
+        .modal {
+            background: #fff; border-radius: 16px;
+            max-width: 860px; width: 100%;
+            max-height: calc(100vh - 80px); overflow-y: auto;
+            padding: 32px; position: relative;
+        }
+        .modal-close {
+            position: absolute; top: 16px; right: 16px;
+            background: #f0f0f0; border: none;
+            width: 32px; height: 32px; border-radius: 50%;
+            font-size: 18px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .modal-close:hover { background: #e0e0e0; }
+        .modal h2 { font-size: 22px; margin-bottom: 20px; }
+        .unit-card {
+            border: 1px solid #e5e5ea; border-radius: 12px;
+            padding: 20px; margin-bottom: 16px;
+        }
+        .unit-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 12px; color: #007aff; }
+        .unit-section { margin-bottom: 12px; }
+        .unit-section h4 {
+            font-size: 13px; font-weight: 700; color: #86868b;
+            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
+        }
+        .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tag {
+            display: inline-block; padding: 3px 10px; border-radius: 12px;
+            font-size: 13px; background: #e8f4fd; color: #0a84ff;
+        }
+        .tag.vocab { background: #fff3e0; color: #ff9500; }
+        .tag.grammar { background: #f3e8ff; color: #8b5cf6; }
+        .tag.command { background: #e8fae8; color: #248a3d; }
+        .tag.song { background: #fde8e8; color: #ff3b30; }
+        .sentence-item {
+            padding: 4px 0; font-size: 14px; border-bottom: 1px solid #f5f5f5;
+        }
+        .sentence-item:last-child { border-bottom: none; }
+        .sentence-pattern { font-weight: 600; color: #1d1d1f; }
+        .sentence-usage { color: #86868b; font-size: 13px; margin-left: 8px; }
+        .story-box {
+            background: #fafafa; border-radius: 8px; padding: 12px;
+            font-size: 14px; color: #333;
+        }
+        /* Glossary table */
+        .glossary-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+        .glossary-table th {
+            text-align: left; padding: 6px 8px; background: #f5f5f7;
+            border-bottom: 2px solid #e5e5ea; font-size: 12px; font-weight: 600;
+        }
+        .glossary-table td { padding: 4px 8px; border-bottom: 1px solid #f0f0f0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📚 Volingo 教材管理后台</h1>
+        <p class="subtitle">选择教材 → 上传 PDF → Azure Doc Intelligence 提取 → Cosmos DB 存储 → GPT-4o 智能分析</p>
+
+        <!-- Step 1: Select textbook -->
+        <div class="card">
+            <h2><span class="step">1</span> 选择教材</h2>
+            <div class="row">
+                <div>
+                    <label>教材版本</label>
+                    <select id="seriesSelect" onchange="onSeriesChange()">
+                        <option value="">— 选择教材版本 —</option>
+                    </select>
+                </div>
+                <div>
+                    <label>册次</label>
+                    <select id="volumeSelect" disabled>
+                        <option value="">— 先选教材版本 —</option>
+                    </select>
+                </div>
+            </div>
+            <div class="meta" id="selectionMeta" style="display:none">
+                <span>📝 ID: <strong id="previewId"></strong></span>
+                <span>📖 <span id="previewDisplay"></span></span>
+            </div>
+        </div>
+
+        <!-- Step 2: Upload PDF -->
+        <div class="card">
+            <h2><span class="step">2</span> 上传 PDF 并提取</h2>
+            <input type="file" id="pdfFile" accept=".pdf">
+            <button class="btn btn-primary" id="extractBtn" onclick="extractPdf()" disabled>
+                🔍 提取文本
+            </button>
+            <div class="status" id="extractStatus"></div>
+        </div>
+
+        <!-- Step 3: Preview -->
+        <div class="card" id="previewCard" style="display:none">
+            <h2><span class="step">3</span> 预览提取结果</h2>
+            <div class="meta" id="extractMeta">
+                <span>📄 页数: <strong id="metaPages">0</strong></span>
+                <span>📝 字符: <strong id="metaChars">0</strong></span>
+            </div>
+            <div class="preview-box" id="previewContent" style="display:block; margin-top:12px"></div>
+            <div style="margin-top: 16px; display: flex; gap: 12px;">
+                <button class="btn btn-success" id="saveBtn" onclick="saveToDb()">
+                    ✅ 确认存入 Cosmos DB
+                </button>
+                <button class="btn btn-danger" onclick="clearPreview()">
+                    ❌ 放弃
+                </button>
+            </div>
+            <div class="status" id="saveStatus"></div>
+        </div>
+
+        <!-- Inventory -->
+        <div class="card">
+            <h2>📊 已入库文档</h2>
+            <button class="btn btn-primary btn-sm" onclick="loadInventory()" style="margin-bottom: 12px;">
+                🔄 刷新
+            </button>
+            <div id="inventoryContent">
+                <p style="color: #86868b; font-size: 14px;">点击刷新查看已入库文档</p>
+            </div>
+        </div>
+
+        <!-- Analysis Modal -->
+        <div class="modal-overlay" id="analysisModal">
+            <div class="modal">
+                <button class="modal-close" onclick="closeAnalysisModal()">✕</button>
+                <h2 id="modalTitle">📖 知识点分析</h2>
+                <div id="modalContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = "/api/v1/admin";
+        let textbooks = [];
+        let extractedContent = "";
+        let extractedPages = 0;
+
+        // ── Init ──
+        async function init() {
+            const resp = await fetch(`${API}/textbooks`);
+            textbooks = await resp.json();
+            const sel = document.getElementById("seriesSelect");
+
+            const groups = {};
+            textbooks.forEach(t => {
+                const parts = t.displayName.split("·");
+                const group = parts.length > 1 ? parts[0] : "其他";
+                if (!groups[group]) groups[group] = [];
+                groups[group].push(t);
+            });
+
+            for (const [group, items] of Object.entries(groups)) {
+                const optgroup = document.createElement("optgroup");
+                optgroup.label = group;
+                items.forEach(t => {
+                    const opt = document.createElement("option");
+                    opt.value = t.seriesCode;
+                    opt.textContent = t.displayName;
+                    optgroup.appendChild(opt);
+                });
+                sel.appendChild(optgroup);
+            }
+
+            // Auto-refresh inventory on page load
+            loadInventory();
+        }
+
+        async function onSeriesChange() {
+            const code = document.getElementById("seriesSelect").value;
+            const volSel = document.getElementById("volumeSelect");
+            volSel.innerHTML = "";
+
+            if (!code) {
+                volSel.disabled = true;
+                volSel.innerHTML = '<option value="">— 先选教材版本 —</option>';
+                updatePreviewId();
+                return;
+            }
+
+            const tb = textbooks.find(t => t.seriesCode === code);
+            if (!tb.isGradeSync) {
+                volSel.disabled = true;
+                volSel.innerHTML = '<option value="">（无需选择册次）</option>';
+                updatePreviewId();
+                updateExtractBtn();
+                return;
+            }
+
+            const resp = await fetch(`${API}/textbooks/${code}/volumes`);
+            const volumes = await resp.json();
+
+            volSel.disabled = false;
+            volSel.innerHTML = '<option value="">— 选择册次 —</option>';
+            volumes.forEach(v => {
+                const opt = document.createElement("option");
+                opt.value = v.volume;
+                opt.textContent = v.display;
+                volSel.appendChild(opt);
+            });
+
+            volSel.onchange = () => { updatePreviewId(); updateExtractBtn(); };
+            updatePreviewId();
+            updateExtractBtn();
+        }
+
+        function updatePreviewId() {
+            const code = document.getElementById("seriesSelect").value;
+            const vol = document.getElementById("volumeSelect").value;
+            const meta = document.getElementById("selectionMeta");
+
+            if (!code) { meta.style.display = "none"; return; }
+
+            const tb = textbooks.find(t => t.seriesCode === code);
+            let id = code;
+            if (tb.isGradeSync && vol) {
+                id = `${code}-${vol}`;
+            } else if (tb.isGradeSync && !vol) {
+                meta.style.display = "none";
+                return;
+            }
+
+            document.getElementById("previewId").textContent = id;
+            document.getElementById("previewDisplay").textContent =
+                tb.displayName + (vol ? ` · ${document.getElementById("volumeSelect").selectedOptions[0]?.text || ""}` : "");
+            meta.style.display = "flex";
+        }
+
+        function updateExtractBtn() {
+            const code = document.getElementById("seriesSelect").value;
+            const vol = document.getElementById("volumeSelect").value;
+            const file = document.getElementById("pdfFile").files[0];
+            const tb = textbooks.find(t => t.seriesCode === code);
+            const ready = code && file && (!tb?.isGradeSync || vol);
+            document.getElementById("extractBtn").disabled = !ready;
+        }
+
+        document.getElementById("pdfFile").addEventListener("change", updateExtractBtn);
+
+        // ── Extract ──
+        async function extractPdf() {
+            const file = document.getElementById("pdfFile").files[0];
+            if (!file) return;
+
+            const btn = document.getElementById("extractBtn");
+            const status = document.getElementById("extractStatus");
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 提取中…';
+            status.className = "status loading";
+            status.textContent = `正在上传 ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB) 并调用 Azure Doc Intelligence…`;
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            try {
+                const resp = await fetch(`${API}/extract`, { method: "POST", body: formData });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.detail || "提取失败");
+                }
+                const data = await resp.json();
+
+                extractedContent = data.content;
+                extractedPages = data.totalPages;
+
+                document.getElementById("previewCard").style.display = "block";
+                document.getElementById("previewContent").textContent = data.content;
+                document.getElementById("metaPages").textContent = data.totalPages;
+                document.getElementById("metaChars").textContent = data.charCount.toLocaleString();
+
+                status.className = "status success";
+                status.textContent = `✅ 提取完成: ${data.totalPages} 页, ${data.charCount.toLocaleString()} 字符`;
+            } catch (e) {
+                status.className = "status error";
+                status.textContent = `❌ ${e.message}`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = "🔍 提取文本";
+                updateExtractBtn();
+            }
+        }
+
+        // ── Save ──
+        async function saveToDb() {
+            const code = document.getElementById("seriesSelect").value;
+            const vol = document.getElementById("volumeSelect").value;
+            const btn = document.getElementById("saveBtn");
+            const status = document.getElementById("saveStatus");
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 保存中…';
+
+            try {
+                const resp = await fetch(`${API}/save`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        seriesCode: code,
+                        volume: vol || null,
+                        rawContent: extractedContent,
+                        totalPages: extractedPages,
+                    }),
+                });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.detail || "保存失败");
+                }
+                const data = await resp.json();
+
+                status.className = "status success";
+                status.textContent = `✅ 已保存: ${data.id} (${data.displayName}), ${data.totalPages} 页, ${data.charCount.toLocaleString()} 字符`;
+                loadInventory();
+            } catch (e) {
+                status.className = "status error";
+                status.textContent = `❌ ${e.message}`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = "✅ 确认存入 Cosmos DB";
+            }
+        }
+
+        function clearPreview() {
+            document.getElementById("previewCard").style.display = "none";
+            extractedContent = "";
+            extractedPages = 0;
+        }
+
+        // ── Inventory ──
+        async function loadInventory() {
+            const container = document.getElementById("inventoryContent");
+            container.innerHTML = '<p style="color: #86868b;">加载中…</p>';
+
+            try {
+                const resp = await fetch(`${API}/documents`);
+                const docs = await resp.json();
+
+                if (docs.length === 0) {
+                    container.innerHTML = '<p style="color: #86868b;">暂无已入库文档</p>';
+                    return;
+                }
+
+                let html = `<table class="inventory-table">
+                    <thead><tr>
+                        <th>ID</th><th>教材</th><th>册次</th><th>页数</th><th>AI 分析</th><th>更新时间</th><th>操作</th>
+                    </tr></thead><tbody>`;
+
+                docs.sort((a, b) => a.id.localeCompare(b.id));
+                docs.forEach(doc => {
+                    const updated = doc.updatedAt ? new Date(doc.updatedAt).toLocaleString("zh-CN") : "-";
+                    const hasAI = doc.hasAnalysis;
+                    const aiBadge = hasAI
+                        ? '<span class="badge badge-ai">✅ 已分析</span>'
+                        : '<span class="badge badge-empty">未分析</span>';
+                    html += `<tr>
+                        <td><code>${doc.id}</code></td>
+                        <td>${doc.displayName || doc.textbook}</td>
+                        <td>${doc.volume || "-"}</td>
+                        <td>${doc.totalPages || 0}</td>
+                        <td>${aiBadge}</td>
+                        <td>${updated}</td>
+                        <td style="display:flex;gap:6px;flex-wrap:wrap;">
+                            <button class="btn btn-analyze btn-sm" onclick="analyzeDoc('${doc.id}','${doc.textbook}', this)">
+                                🤖 ${hasAI ? '重新分析' : 'AI 分析'}
+                            </button>
+                            ${hasAI ? `<button class="btn btn-primary btn-sm" onclick="viewAnalysis('${doc.id}','${doc.textbook}')">📖 查看</button>` : ''}
+                            <button class="btn btn-danger btn-sm" onclick="deleteDoc('${doc.id}','${doc.textbook}')">删除</button>
+                        </td>
+                    </tr>`;
+                });
+                html += "</tbody></table>";
+                html += `<p style="color: #86868b; margin-top:8px; font-size:13px;">共 ${docs.length} 条记录</p>`;
+                container.innerHTML = html;
+            } catch (e) {
+                container.innerHTML = `<p style="color: #ff3b30;">加载失败: ${e.message}</p>`;
+            }
+        }
+
+        async function deleteDoc(id, textbook) {
+            if (!confirm(`确认删除 ${id}？`)) return;
+            try {
+                const resp = await fetch(`${API}/documents/${id}?textbook=${encodeURIComponent(textbook)}`, { method: "DELETE" });
+                if (resp.ok) loadInventory();
+            } catch (e) {
+                alert("删除失败: " + e.message);
+            }
+        }
+
+        // ── AI Analysis ──
+        async function analyzeDoc(id, textbook, btn) {
+            if (!confirm(`对 ${id} 运行 GPT-4o 分析？\n（可能需要 30-60 秒）`)) return;
+
+            const origText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner" style="border-top-color:#fff"></span> 分析中…';
+
+            try {
+                const resp = await fetch(`${API}/analyze/${id}?textbook=${encodeURIComponent(textbook)}`, {
+                    method: "POST",
+                });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.detail || "分析失败");
+                }
+                const data = await resp.json();
+                alert(`✅ 分析完成！共提取 ${data.unitCount} 个单元的知识点。`);
+                loadInventory();
+                showAnalysis(data.analysis, data.displayName);
+            } catch (e) {
+                alert(`❌ 分析失败: ${e.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            }
+        }
+
+        async function viewAnalysis(id, textbook) {
+            try {
+                const resp = await fetch(`${API}/documents/${id}/analysis?textbook=${encodeURIComponent(textbook)}`);
+                const data = await resp.json();
+                if (!data.hasAnalysis) {
+                    alert("该文档尚未进行 AI 分析");
+                    return;
+                }
+                showAnalysis(data.analysis, data.displayName);
+            } catch (e) {
+                alert("加载分析结果失败: " + e.message);
+            }
+        }
+
+        function showAnalysis(analysis, displayName) {
+            const modal = document.getElementById("analysisModal");
+            const title = document.getElementById("modalTitle");
+            const content = document.getElementById("modalContent");
+
+            title.textContent = `📖 ${displayName} — 知识点分析`;
+
+            let html = "";
+
+            // Book info
+            const info = analysis.bookInfo;
+            if (info) {
+                html += `<div style="margin-bottom:20px;padding:12px;background:#f5f5f7;border-radius:8px;font-size:14px;">
+                    <strong>${info.title || ""}</strong><br>
+                    出版社: ${info.publisher || ""} · ${info.grade || ""}${info.semester || ""}
+                    ${info.startingPoint ? ` · ${info.startingPoint}` : ""}
+                    ${info.characters?.length ? `<br>角色: ${info.characters.join(", ")}` : ""}
+                </div>`;
+            }
+
+            // Units
+            const units = analysis.units || [];
+            units.forEach(unit => {
+                html += `<div class="unit-card">`;
+                html += `<h3>${unit.unitNumber === 0 ? "Starter" : `Unit ${unit.unitNumber}`}: ${unit.unitTitle || ""}</h3>`;
+                if (unit.topic) {
+                    html += `<div style="color:#86868b;font-size:14px;margin-bottom:12px;">主题: ${unit.topic}</div>`;
+                }
+
+                // Vocabulary
+                if (unit.vocabulary?.length) {
+                    html += `<div class="unit-section"><h4>📝 生词 (${unit.vocabulary.length})</h4><div class="tag-list">`;
+                    unit.vocabulary.forEach(v => {
+                        html += `<span class="tag vocab" title="${v.type || ''}">${v.word} <small>${v.meaning}</small></span>`;
+                    });
+                    html += `</div></div>`;
+                }
+
+                // Sentence patterns
+                if (unit.sentencePatterns?.length) {
+                    html += `<div class="unit-section"><h4>💬 核心句型</h4>`;
+                    unit.sentencePatterns.forEach(s => {
+                        html += `<div class="sentence-item">
+                            <span class="sentence-pattern">${s.pattern || s}</span>
+                            ${s.usage ? `<span class="sentence-usage">— ${s.usage}</span>` : ""}
+                        </div>`;
+                    });
+                    html += `</div>`;
+                }
+
+                // Grammar
+                if (unit.grammar?.length) {
+                    html += `<div class="unit-section"><h4>📐 语法要点</h4><div class="tag-list">`;
+                    unit.grammar.forEach(g => {
+                        html += `<span class="tag grammar">${g}</span>`;
+                    });
+                    html += `</div></div>`;
+                }
+
+                // Songs
+                if (unit.songs?.length) {
+                    html += `<div class="unit-section"><h4>🎵 歌曲/歌谣</h4><div class="tag-list">`;
+                    unit.songs.forEach(s => {
+                        html += `<span class="tag song">${s.type === "song" ? "🎶" : "🗣️"} ${s.title}${s.firstLine ? ` — "${s.firstLine}"` : ""}</span>`;
+                    });
+                    html += `</div></div>`;
+                }
+
+                // Commands
+                if (unit.commands?.length) {
+                    html += `<div class="unit-section"><h4>🎯 课堂指令</h4><div class="tag-list">`;
+                    unit.commands.forEach(c => {
+                        html += `<span class="tag command">${c}</span>`;
+                    });
+                    html += `</div></div>`;
+                }
+
+                // Story
+                if (unit.storySummary) {
+                    html += `<div class="unit-section"><h4>📖 Story Time</h4>
+                        <div class="story-box">${unit.storyTitle ? `<strong>${unit.storyTitle}</strong><br>` : ""}${unit.storySummary}</div>
+                    </div>`;
+                }
+
+                html += `</div>`;
+            });
+
+            // Vocabulary Glossary
+            const glossary = analysis.vocabularyGlossary || [];
+            if (glossary.length) {
+                html += `<div class="unit-card">
+                    <h3>📘 词汇总表 (${glossary.length} 词)</h3>
+                    <table class="glossary-table">
+                    <thead><tr><th>单词</th><th>释义</th><th>词性</th><th>首现单元</th></tr></thead>
+                    <tbody>`;
+                glossary.forEach(g => {
+                    html += `<tr><td><strong>${g.word}</strong></td><td>${g.meaning}</td><td>${g.type || ""}</td><td>${g.unitFirst ?? ""}</td></tr>`;
+                });
+                html += `</tbody></table></div>`;
+            }
+
+            content.innerHTML = html;
+            modal.classList.add("active");
+            document.body.style.overflow = "hidden";
+        }
+
+        function closeAnalysisModal() {
+            document.getElementById("analysisModal").classList.remove("active");
+            document.body.style.overflow = "";
+        }
+        document.getElementById("analysisModal").addEventListener("click", (e) => {
+            if (e.target === e.currentTarget) closeAnalysisModal();
+        });
+
+        // Init
+        init();
+    </script>
+</body>
+</html>
