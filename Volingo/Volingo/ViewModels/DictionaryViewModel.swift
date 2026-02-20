@@ -5,6 +5,7 @@ import SwiftUI
 class DictionaryViewModel: ObservableObject {
     @Published var searchText = ""
     @Published var searchResults: [Word] = []
+    @Published var suggestions: [String] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var selectedWord: Word?
@@ -15,10 +16,35 @@ class DictionaryViewModel: ObservableObject {
     )
     
     private let dictionaryService = DictionaryService.shared
+    private let autocompleteService = AutocompleteService.shared
     
     init() {
         loadSavedWordIds()
         refreshWordbookStats()
+    }
+    
+    // MARK: - 自动补全
+    
+    /// 根据当前输入更新建议列表
+    func updateSuggestions() {
+        // 正在加载或已有选中词时不显示建议
+        guard selectedWord == nil, !isLoading else {
+            suggestions = []
+            return
+        }
+        let text = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            suggestions = []
+            return
+        }
+        suggestions = autocompleteService.suggestions(for: text, limit: 8)
+    }
+    
+    /// 选中某个建议词，触发查词
+    func selectSuggestion(_ word: String) {
+        searchText = word
+        suggestions = []
+        searchWord(word)
     }
     
     /// 刷新生词本统计
@@ -50,6 +76,14 @@ class DictionaryViewModel: ObservableObject {
                 await MainActor.run {
                     self.searchResults = results
                     self.isLoading = false
+                    self.suggestions = []
+                    // 只有一个结果时自动展示详情并加入生词本
+                    if let word = results.first, results.count == 1 {
+                        self.selectedWord = word
+                        if !self.isWordInWordbook(word) {
+                            self.addToWordbook(word)
+                        }
+                    }
                 }
             } catch {
                 await MainActor.run {

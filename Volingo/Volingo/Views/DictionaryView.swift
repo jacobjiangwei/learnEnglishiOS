@@ -9,125 +9,59 @@ import SwiftUI
 
 struct DictionaryView: View {
     @StateObject private var viewModel = DictionaryViewModel()
-    @State private var showingWordDetail = false
     @State private var showingWordbook = false
-    @State private var searchTask: Task<Void, Never>?
     @FocusState private var isSearchFocused: Bool
-    
-    /// 是否正在搜索（有输入内容或正在加载）
-    private var isSearching: Bool {
-        !viewModel.searchText.isEmpty || viewModel.isLoading
-    }
     
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // ── 内容区域 ──
-                if isSearching {
-                    // 搜索模式：搜索栏置顶 + 结果
-                    SearchBarView(
-                        text: $viewModel.searchText,
-                        onSearchButtonClicked: {
-                            viewModel.searchWord(viewModel.searchText)
-                        }
-                    )
-                    .focused($isSearchFocused)
-                    .padding()
-                    
-                    if let errorMessage = viewModel.errorMessage {
-                        ErrorBanner(message: errorMessage) {
-                            viewModel.clearError()
-                        }
-                    }
-                    
-                    searchResultsContent
-                } else {
-                    // 默认模式：生词本在上，搜索在下
-                    idleContent
-                }
-                
-                Spacer()
-            }
-            .navigationTitle("词典")
-            .onChange(of: viewModel.searchText) { oldValue, newValue in
-                searchTask?.cancel()
-                if newValue.isEmpty {
-                    viewModel.searchResults = []
-                    return
-                }
-                searchTask = Task {
-                    try? await Task.sleep(nanoseconds: 300_000_000)
-                    if !Task.isCancelled {
-                        await MainActor.run {
-                            viewModel.searchWord(newValue)
-                        }
-                    }
-                }
-            }
-        }
-        .navigationViewStyle(.stack)
-        .sheet(isPresented: $showingWordDetail) {
-            if let word = viewModel.selectedWord {
-                WordDetailView(
-                    word: word,
-                    isInWordbook: viewModel.isWordInWordbook(word),
-                    onWordbookToggle: {
-                        if viewModel.isWordInWordbook(word) {
-                            viewModel.removeFromWordbook(word)
-                        } else {
-                            viewModel.addToWordbook(word)
-                        }
-                    }
-                )
-            }
-        }
-        .sheet(isPresented: $showingWordbook, onDismiss: {
-            viewModel.refreshWordbookStats()
-        }) {
-            WordbookView()
-        }
-        .onDisappear {
-            searchTask?.cancel()
-        }
-    }
-    
-    // MARK: - 默认状态（未搜索时）
-    
-    private var idleContent: some View {
-        ScrollView {
-            VStack(spacing: 16) {
                 // 生词本入口卡片
                 WordbookEntryCard(
                     stats: viewModel.wordbookStats,
                     onTap: { showingWordbook = true }
                 )
                 .padding(.horizontal)
+                .padding(.top, 8)
                 
-                // 搜索入口
+                // 搜索栏（始终在原位）
                 SearchBarView(
                     text: $viewModel.searchText,
                     onSearchButtonClicked: {
+                        viewModel.suggestions = []
                         viewModel.searchWord(viewModel.searchText)
                     }
                 )
                 .focused($isSearchFocused)
                 .padding(.horizontal)
+                .padding(.top, 12)
                 
-                // 缓存统计
-                let cachedCount = DictionaryService.shared.getCachedWordCount()
-                if cachedCount > 0 {
-                    HStack {
-                        Image(systemName: "internaldrive")
-                            .foregroundColor(.secondary)
-                        Text("已缓存 \(cachedCount) 个词条")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Spacer()
+                if let errorMessage = viewModel.errorMessage {
+                    ErrorBanner(message: errorMessage) {
+                        viewModel.clearError()
                     }
-                    .padding(.horizontal, 20)
                 }
+                
+                // 搜索栏下方：建议 / loading / 结果
+                searchResultsContent
+                
+                Spacer()
             }
-            .padding(.top, 8)
+            .navigationTitle("词典")
+            .onChange(of: viewModel.searchText) { oldValue, newValue in
+                if newValue.isEmpty {
+                    viewModel.searchResults = []
+                    viewModel.suggestions = []
+                    viewModel.selectedWord = nil
+                    return
+                }
+                viewModel.updateSuggestions()
+            }
+        }
+        .navigationViewStyle(.stack)
+        .sheet(isPresented: $showingWordbook, onDismiss: {
+            viewModel.refreshWordbookStats()
+        }) {
+            WordbookView()
         }
     }
     
@@ -138,15 +72,37 @@ struct DictionaryView: View {
         if viewModel.isLoading {
             LoadingView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let word = viewModel.selectedWord {
+            // 已选中词 → 内联显示详情
+            InlineWordDetailView(
+                word: word,
+                isInWordbook: viewModel.isWordInWordbook(word),
+                onWordbookToggle: {
+                    if viewModel.isWordInWordbook(word) {
+                        viewModel.removeFromWordbook(word)
+                    } else {
+                        viewModel.addToWordbook(word)
+                    }
+                }
+            )
+        } else if !viewModel.suggestions.isEmpty {
+            // 有建议 → 显示建议列表
+            SuggestionListView(
+                suggestions: viewModel.suggestions,
+                onSelect: { suggestion in
+                    viewModel.selectSuggestion(suggestion)
+                    isSearchFocused = false
+                }
+            )
         } else if viewModel.searchResults.isEmpty && !viewModel.searchText.isEmpty {
             EmptyResultsView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
+        } else if !viewModel.searchResults.isEmpty {
+            // 搜索结果列表（多结果时）— 点击直接选中
             WordResultsList(
                 words: viewModel.searchResults,
                 onWordSelected: { word in
                     viewModel.selectedWord = word
-                    showingWordDetail = true
                 },
                 onWordbookAction: { word in
                     if viewModel.isWordInWordbook(word) {
@@ -160,6 +116,102 @@ struct DictionaryView: View {
                 }
             )
         }
+    }
+}
+
+// MARK: - 自动补全建议列表
+struct SuggestionListView: View {
+    let suggestions: [String]
+    let onSelect: (String) -> Void
+    
+    var body: some View {
+        List(suggestions, id: \.self) { word in
+            Button(action: { onSelect(word) }) {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(word)
+                        .font(.body)
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .listStyle(.plain)
+    }
+}
+
+// MARK: - 内联词详情视图
+struct InlineWordDetailView: View {
+    let word: Word
+    let isInWordbook: Bool
+    let onWordbookToggle: () -> Void
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                // 单词标题 + 收藏按钮
+                HStack(alignment: .center) {
+                    Text(word.word)
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                    
+                    Spacer()
+                    
+                    Button(action: onWordbookToggle) {
+                        HStack(spacing: 4) {
+                            Image(systemName: isInWordbook ? "star.fill" : "star")
+                                .foregroundColor(isInWordbook ? .yellow : .gray)
+                                .font(.title2)
+                            Text(isInWordbook ? "已收藏" : "收藏")
+                                .font(.caption)
+                                .foregroundColor(isInWordbook ? .yellow : .secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                // 音标 + 发音
+                WordHeaderView(word: word)
+                
+                Divider()
+                
+                // 词义列表
+                WordSensesView(senses: word.senses)
+                
+                // 词形变化
+                if let exchange = word.exchange, hasWordForms(exchange) {
+                    Divider()
+                    WordFormsView(exchange: exchange)
+                }
+                
+                // 同义词反义词
+                if !word.synonyms.isEmpty || !word.antonyms.isEmpty {
+                    Divider()
+                    SynonymsAntonymsView(synonyms: word.synonyms, antonyms: word.antonyms)
+                }
+                
+                // 常用短语
+                if !word.relatedPhrases.isEmpty {
+                    Divider()
+                    RelatedPhrasesView(phrases: word.relatedPhrases)
+                }
+                
+                // 用法说明
+                if let notes = word.usageNotes, !notes.isEmpty {
+                    Divider()
+                    UsageNotesView(notes: notes)
+                }
+            }
+            .padding()
+        }
+    }
+    
+    private func hasWordForms(_ exchange: WordExchange) -> Bool {
+        return [exchange.plural, exchange.pastTense, exchange.pastParticiple,
+                exchange.presentParticiple, exchange.comparative, exchange.superlative,
+                exchange.thirdPersonSingular].compactMap { $0 }.filter { !$0.isEmpty }.count > 0
     }
 }
 
@@ -406,7 +458,7 @@ struct WordRowView: View {
     }
 }
 
-// MARK: - 单词详情视图
+// MARK: - 单词详情视图（供其他页面以 sheet 方式使用）
 struct WordDetailView: View {
     let word: Word
     var isInWordbook: Bool = false
@@ -415,47 +467,14 @@ struct WordDetailView: View {
     
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    // 使用简化后的 WordHeaderView
-                    WordHeaderView(word: word)
-                    
-                    // 词义列表
-                    WordSensesView(senses: word.senses)
-                    
-                    // 词形变化
-                    if let exchange = word.exchange, hasWordForms(exchange) {
-                        WordFormsView(exchange: exchange)
-                    }
-                    
-                    // 同义词反义词
-                    if !word.synonyms.isEmpty || !word.antonyms.isEmpty {
-                        SynonymsAntonymsView(synonyms: word.synonyms, antonyms: word.antonyms)
-                    }
-                    
-                    // 常用短语
-                    if !word.relatedPhrases.isEmpty {
-                        RelatedPhrasesView(phrases: word.relatedPhrases)
-                    }
-                    
-                    // 用法说明
-                    if let notes = word.usageNotes, !notes.isEmpty {
-                        UsageNotesView(notes: notes)
-                    }
-                }
-                .padding()
-            }
+            InlineWordDetailView(
+                word: word,
+                isInWordbook: isInWordbook,
+                onWordbookToggle: onWordbookToggle ?? {}
+            )
             .navigationTitle(word.word)
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    if let toggle = onWordbookToggle {
-                        Button(action: toggle) {
-                            Image(systemName: isInWordbook ? "star.fill" : "star")
-                                .foregroundColor(isInWordbook ? .yellow : .gray)
-                        }
-                    }
-                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("关闭") {
                         dismiss()
@@ -464,12 +483,6 @@ struct WordDetailView: View {
             }
         }
         .navigationViewStyle(.stack)
-    }
-    
-    private func hasWordForms(_ exchange: WordExchange) -> Bool {
-        return [exchange.plural, exchange.pastTense, exchange.pastParticiple,
-                exchange.presentParticiple, exchange.comparative, exchange.superlative,
-                exchange.thirdPersonSingular].compactMap { $0 }.filter { !$0.isEmpty }.count > 0
     }
 }
 
