@@ -202,223 +202,116 @@ struct Definition {
     let meaning: String       // 释义
 }
 
-// MARK: - 艾宾浩斯遗忘曲线复习间隔
-/// 基于艾宾浩斯遗忘曲线的复习间隔序列
-struct ReviewIntervals {
-    static let intervals: [TimeInterval] = [
-        0,              // Level 0: 立即复习 (新增加的词)
-        10 * 60,        // Level 1: 10分钟
-        1 * 3600,       // Level 2: 1小时
-        8 * 3600,       // Level 3: 8小时
-        1 * 86400,      // Level 4: 1天
-        3 * 86400,      // Level 5: 3天
-        7 * 86400,      // Level 6: 1周
-        14 * 86400,     // Level 7: 2周
-        30 * 86400,     // Level 8: 1个月
-        90 * 86400,     // Level 9: 3个月
-        180 * 86400     // Level 10: 6个月
-    ]
-    
-    /// 获取人类可读的间隔描述
-    static func description(for level: Int) -> String {
-        let descriptions = [
-            "立即复习", "10分钟后", "1小时后", "8小时后", "1天后", "3天后",
-            "1周后", "2周后", "1个月后", "3个月后", "6个月后"
-        ]
-        return descriptions[safe: level] ?? "未知"
-    }
-    
-    /// 获取间隔的紧急程度（用于排序，数值越大越紧急）
-    static func urgency(for level: Int) -> Int {
-        return max(0, intervals.count - level)
-    }
-    
-    /// 获取指定level的时间间隔
-    static func timeInterval(for level: Int) -> TimeInterval {
-        return intervals[safe: level] ?? 0
-    }
-    
-    // MARK: - 复习时机判断工具函数
-    
-    /// 判断单词是否应该复习 (基于添加时间和当前level)
-    static func shouldReview(addedDate: Date, currentLevel: Int, currentTime: Date = Date()) -> Bool {
-        let interval = timeInterval(for: currentLevel)
-        let nextReviewDate = addedDate.addingTimeInterval(interval)
-        return currentTime >= nextReviewDate
-    }
-    
-    /// 计算距离下次复习的时间描述
-    static func timeUntilNextReview(addedDate: Date, currentLevel: Int, currentTime: Date = Date()) -> String {
-        let interval = timeInterval(for: currentLevel)
-        let nextReviewDate = addedDate.addingTimeInterval(interval)
-        let timeInterval = nextReviewDate.timeIntervalSinceNow
-        
-        if timeInterval <= 0 {
-            return "需要复习"
-        }
-        
-        let hours = Int(timeInterval / 3600)
-        let days = hours / 24
-        
-        if days > 0 {
-            return "\(days)天后"
-        } else if hours > 0 {
-            return "\(hours)小时后"
-        } else {
-            let minutes = Int(timeInterval / 60)
-            return "\(minutes)分钟后"
-        }
-    }
-}
-
-// MARK: - 简化的生词本模型
-struct SavedWord: Codable, Identifiable {
+// MARK: - 生词本模型 (FSRS)
+struct SavedWord: Codable, Identifiable, FSRSReviewable {
     let id: String
-    let word: Word                      // 使用原有的Word结构
+    let word: Word
+    let addedDate: Date
     
-    // 核心数据 - 只存储基础统计
-    let addedDate: Date                 // 添加时间 (固定不变)
-    var correctCount: Int = 0           // 答对次数
-    var wrongCount: Int = 0             // 答错次数
+    // FSRS 记忆参数
+    var memory: FSRSMemory = FSRSMemory()
     
-    /// 熟悉程度等级 (0-10) - 基于答对答错次数差值的只读属性
-    var level: Int {
-        let diff = correctCount - wrongCount
-        return max(0, min(diff, ReviewIntervals.intervals.count - 1))
+    // 统计（向后兼容）
+    var correctCount: Int = 0
+    var wrongCount: Int = 0
+    
+    // MARK: - FSRSReviewable
+    var fsrsMemory: FSRSMemory { memory }
+    
+    // MARK: - 便利属性
+    
+    var wordText: String { word.word }
+    
+    var definition: String {
+        word.senses.first?.translations.first ?? word.senses.first?.definitions.first ?? ""
     }
     
-    /// 计算下次复习时间 = 添加时间 + 当前level对应的时间间隔
-    var nextReviewDate: Date {
-        let interval = ReviewIntervals.timeInterval(for: level)
-        return addedDate.addingTimeInterval(interval)
-    }
+    var pronunciation: String? { word.phonetic }
     
-    /// 是否需要复习 = 使用 ReviewIntervals 工具函数
+    var exampleSentence: String? { word.senses.first?.examples.first?.en }
+    
+    var totalReviews: Int { correctCount + wrongCount }
+    
+    /// 是否需要复习
     var needsReview: Bool {
-        return ReviewIntervals.shouldReview(addedDate: addedDate, currentLevel: level)
+        guard let nextReview = memory.nextReviewDate else { return true }
+        return nextReview <= Date()
     }
     
-    /// 当前复习间隔的描述
-    var currentIntervalDescription: String {
-        return ReviewIntervals.description(for: level)
-    }
-    
-    /// 距离下次复习的时间描述 = 使用 ReviewIntervals 工具函数
+    /// 距离下次复习的时间描述
     var timeUntilNextReview: String {
-        return ReviewIntervals.timeUntilNextReview(addedDate: addedDate, currentLevel: level)
+        guard let nextReview = memory.nextReviewDate else { return "待复习" }
+        let interval = nextReview.timeIntervalSinceNow
+        if interval <= 0 { return "待复习" }
+        let hours = Int(interval / 3600)
+        let days = hours / 24
+        if days > 0 { return "\(days)天后" }
+        if hours > 0 { return "\(hours)小时后" }
+        return "\(max(1, Int(interval / 60)))分钟后"
     }
     
-    /// 掌握程度描述（基于当前level）
-    var masteryDescription: String {
-        switch level {
-        case 0...2: return "新词"           // Level 0-2: 立即复习-1小时
-        case 3...4: return "学习中"         // Level 3-4: 8小时-1天
-        case 5...6: return "熟悉"           // Level 5-6: 3天-1周
-        case 7...10: return "掌握"          // Level 7-10: 2周-6月
-        default: return "未知"
-        }
-    }
+    // MARK: - 初始化
     
-    /// 掌握程度对应的颜色
-    var masteryColor: Color {
-        switch level {
-        case 0...2: return .red         // 新词
-        case 3...4: return .orange      // 学习中
-        case 5...6: return .blue        // 熟悉
-        case 7...10: return .green      // 掌握
-        default: return .gray
-        }
-    }
-    
-    /// 总复习次数
-    var totalReviews: Int {
-        return correctCount + wrongCount
-    }
-    
-    // 从Word创建SavedWord的便利初始化器
     init(from word: Word) {
         self.id = UUID().uuidString
         self.word = word
-        self.addedDate = Date()         // 记录添加时间
-        self.correctCount = 0           // 新词从0开始
-        self.wrongCount = 0             // 新词从0开始
+        self.addedDate = Date()
     }
     
-    // 完整初始化器（用于从存储恢复）
-    init(id: String, word: Word, correctCount: Int = 0, wrongCount: Int = 0, addedDate: Date = Date()) {
+    init(id: String, word: Word, addedDate: Date = Date(), memory: FSRSMemory = FSRSMemory()) {
         self.id = id
         self.word = word
-        self.correctCount = correctCount
-        self.wrongCount = wrongCount
         self.addedDate = addedDate
+        self.memory = memory
     }
     
-    /// 记录答对 - 核心函数
-    mutating func recordCorrect() {
-        correctCount += 1
-        // level 会自动重新计算
-    }
+    // MARK: - 复习结果记录
     
-    /// 记录答错 - 核心函数
-    mutating func recordWrong() {
-        wrongCount += 1
-        // level 会自动重新计算
-    }
-    
-    /// 更新复习结果 - 便利函数
-    mutating func updateReviewResult(isCorrect: Bool) {
-        if isCorrect {
-            recordCorrect()
-        } else {
-            recordWrong()
+    /// 根据 FSRS 评分更新记忆状态
+    mutating func recordReview(rating: FSRSRating) {
+        memory = FSRSEngine.schedule(memory: memory, rating: rating)
+        switch rating {
+        case .again:
+            wrongCount += 1
+        case .hard, .good, .easy:
+            correctCount += 1
         }
     }
     
-    /// 手动重置复习进度
-    mutating func resetProgress() {
-        correctCount = 0
-        wrongCount = 0
-        // level 自动重置为0
+    // MARK: - Codable
+    
+    enum CodingKeys: String, CodingKey {
+        case id, addedDate, correctCount, wrongCount
+        case word, wordLevels, memory
     }
     
-    // 自定义编码 - 只需要存储基础数据，level会自动计算
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(addedDate, forKey: .addedDate)
         try container.encode(correctCount, forKey: .correctCount)
         try container.encode(wrongCount, forKey: .wrongCount)
-        
-        // 手动编码 word 和 levels
         try container.encode(word, forKey: .word)
         try container.encode(word.levels, forKey: .wordLevels)
+        try container.encode(memory, forKey: .memory)
     }
     
-    // 自定义解码
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         addedDate = try container.decode(Date.self, forKey: .addedDate)
-        correctCount = try container.decode(Int.self, forKey: .correctCount)
-        wrongCount = try container.decode(Int.self, forKey: .wrongCount)
+        correctCount = try container.decodeIfPresent(Int.self, forKey: .correctCount) ?? 0
+        wrongCount = try container.decodeIfPresent(Int.self, forKey: .wrongCount) ?? 0
         
-        // 手动解码 word 和 levels
         var decodedWord = try container.decode(Word.self, forKey: .word)
-        let levels = try container.decode(WordLevels.self, forKey: .wordLevels)
-        decodedWord.levels = levels
+        if let levels = try container.decodeIfPresent(WordLevels.self, forKey: .wordLevels) {
+            decodedWord.levels = levels
+        }
         word = decodedWord
+        
+        // 兼容旧数据：没有 memory 字段时用默认值
+        memory = try container.decodeIfPresent(FSRSMemory.self, forKey: .memory) ?? FSRSMemory()
     }
-    
-    enum CodingKeys: String, CodingKey {
-        case id, addedDate, correctCount, wrongCount
-        case word, wordLevels
-    }
-    
-    // 便利访问器
-    var wordText: String { word.word }
-    var definition: String { word.senses.first?.definitions.first ?? "" }
-    var pronunciation: String? { word.phonetic }
-    var exampleSentence: String? { word.senses.first?.examples.first?.en }
 }
 
 // 扩展：为Array添加安全索引访问
@@ -428,68 +321,10 @@ extension Array {
     }
 }
 
-// 学习会话
-struct LearningSession {
-    let id: String
-    let words: [SavedWord]
-    let startTime: Date
-    var currentIndex: Int
-    var results: [String: LearningResult] = [:]
-    
-    var isCompleted: Bool {
-        return currentIndex >= words.count
-    }
-    
-    var currentWord: SavedWord? {
-        guard currentIndex < words.count else { return nil }
-        return words[currentIndex]
-    }
-}
-
-// 学习结果
-struct LearningResult {
-    let type: LearningResultType
-    let responseTime: TimeInterval
-    let timestamp: Date
-}
-
-enum LearningResultType {
-    case correct    // 答对
-    case incorrect  // 答错
-    case skipped    // 跳过
-}
-
-// 用户学习模式分析
-struct LearningPattern {
-    let averageDelay: TimeInterval      // 平均延迟时间
-    let onTimeReviewRate: Double        // 按时复习率
-    let totalWords: Int                 // 总词数
-    let activeWords: Int                // 活跃学习词数
-}
-
-// 学习会话推荐
-struct StudySessionRecommendation {
-    let recommendedWords: [SavedWord]   // 推荐学习的词
-    let estimatedMinutes: Int           // 预估学习时间
-    let urgentWords: Int                // 紧急需要复习的词数
-}
-
 // 生词本统计
 struct WordbookStats {
     let totalWords: Int
     let needReviewCount: Int
-    let newWords: Int
-    let learningWords: Int
-    let reviewingWords: Int
-    let masteredWords: Int
-}
-
-// 单词分类辅助结构
-struct WordCategories {
-    let newWords: [SavedWord]
-    let overdueWords: [SavedWord]
-    let todayWords: [SavedWord]
-    let learningWords: [SavedWord]
 }
 
 // MARK: - 情景对话相关模型

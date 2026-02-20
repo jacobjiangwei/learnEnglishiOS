@@ -2,314 +2,339 @@
 //  ReviewSessionViewModel.swift
 //  Volingo
 //
-//  Created by jacob on 2025/8/30.
-//
 
 import Foundation
 import SwiftUI
 
-// MARK: - 复习结果数据结构
-struct ReviewResults {
+// MARK: - Session 结果
+struct SessionResults {
     let totalWords: Int
     let correctCount: Int
     let wrongCount: Int
-    let skippedCount: Int
+    let duration: TimeInterval
     
     var accuracy: Double {
-        let attempted = correctCount + wrongCount
-        guard attempted > 0 else { return 0 }
-        return Double(correctCount) / Double(attempted)
+        let total = correctCount + wrongCount
+        guard total > 0 else { return 0 }
+        return Double(correctCount) / Double(total)
+    }
+    
+    var durationText: String {
+        let minutes = Int(duration) / 60
+        let seconds = Int(duration) % 60
+        return "\(minutes)分\(seconds)秒"
     }
 }
 
-// MARK: - 复习会话 ViewModel
+// MARK: - ReviewSessionViewModel
 @MainActor
 class ReviewSessionViewModel: ObservableObject {
-    // MARK: - Published Properties
-    @Published var currentIndex = 0
-    @Published var isLoading = false
-    @Published var hasAnswered = false
-    @Published var reviewResults = ReviewResults(totalWords: 0, correctCount: 0, wrongCount: 0, skippedCount: 0)
     
-    // MARK: - Private Properties
-    private var wordsToReview: [SavedWord] = []
-    private var answers: [String: Bool] = [:] // wordId -> isCorrect
-    private var skipped: Set<String> = [] // wordId set
+    // MARK: - 状态
+    enum SessionState {
+        case loading
+        case question          // 当前正在答题
+        case completed         // Session 结束
+    }
+    
+    @Published var state: SessionState = .loading
+    @Published var questions: [any ReviewQuestion] = []
+    @Published var currentIndex: Int = 0
+    @Published var sessionResults: SessionResults = SessionResults(totalWords: 0, correctCount: 0, wrongCount: 0, duration: 0)
+    
+    // 答题反馈
+    @Published var lastAnswerCorrect: Bool = false
+    @Published var lastCorrectAnswer: String = ""
+    @Published var toastItem: ToastItem? = nil
+    @Published var showWrongAnswer: Bool = false
+    
+    // 连线消消乐状态
+    @Published var matchingRemainingPairs: [(id: String, english: String, chinese: String)] = []
+    @Published var matchingShuffledChinese: [String] = []
+    @Published var matchingSelectedEnglish: String? = nil
+    @Published var matchingSelectedChinese: String? = nil
+    @Published var matchingErrorFlash: Bool = false
+    @Published var matchingResults: [String: Int] = [:]  // wordId -> 配错次数
+    
+    // 内部
     private let wordbookService = WordbookService.shared
+    private var wordsToReview: [SavedWord] = []
+    private var startTime: Date = Date()
+    private var correctCount = 0
+    private var wrongCount = 0
+    private var wordRatings: [String: FSRSRating] = [:]  // wordId -> 最终评分
+    private var retryQueue: [SavedWord] = []  // 答错的词，换题型再出一次
     
-    // MARK: - Computed Properties
-    var totalWords: Int {
-        wordsToReview.count
+    var currentQuestion: (any ReviewQuestion)? {
+        guard currentIndex < questions.count else { return nil }
+        return questions[currentIndex]
     }
     
-    var hasWords: Bool {
-        currentIndex < totalWords
+    var progress: Double {
+        guard !questions.isEmpty else { return 0 }
+        return Double(currentIndex) / Double(questions.count)
     }
     
-    var currentWord: SavedWord? {
-        guard hasWords else { return nil }
-        return wordsToReview[currentIndex]
+    var progressText: String {
+        "\(min(currentIndex + 1, questions.count))/\(questions.count)"
     }
     
-    // MARK: - Initialization
-    init(words: [SavedWord]) {
-        self.wordsToReview = words
-    }
+    // MARK: - 开始
     
-    // MARK: - Public Methods
-    
-    /// 开始复习会话
-    func startReview() {
-        isLoading = true
+    func startSession() {
+        state = .loading
+        startTime = Date()
+        correctCount = 0
+        wrongCount = 0
+        wordRatings.removeAll()
+        retryQueue.removeAll()
+        matchingResults.removeAll()
         
-        // 获取需要复习的单词
         do {
-            wordsToReview = try getWordsForReview()
-            isLoading = false
+            wordsToReview = try wordbookService.getWordsToReview()
+            if wordsToReview.isEmpty {
+                // 没有需要复习的词
+                finishSession()
+                return
+            }
+            questions = QuestionGenerator.generateSession(words: wordsToReview)
+            currentIndex = 0
+            state = .question
         } catch {
-            print("获取复习单词失败: \(error)")
-            wordsToReview = []
-            isLoading = false
+            print("加载复习词失败: \(error)")
+            finishSession()
+        }
+    }
+    
+    // MARK: - 选择题作答
+    
+    func answerMCQ(selected: String) {
+        guard let q = currentQuestion as? ReviewMCQQuestion else { return }
+        guard toastItem == nil && !showWrongAnswer else { return }
+        let correct = selected == q.correctAnswer
+        lastAnswerCorrect = correct
+        lastCorrectAnswer = q.correctAnswer
+        
+        if correct {
+            correctCount += 1
+            updateRating(wordId: q.wordId, rating: .good)
+            showCorrectAndAdvance()
+        } else {
+            wrongCount += 1
+            updateRating(wordId: q.wordId, rating: .again)
+            enqueueRetry(wordId: q.wordId)
+            withAnimation(.spring(duration: 0.3)) { showWrongAnswer = true }
+        }
+    }
+    
+    // MARK: - 填空题作答
+    
+    func answerCloze(typed: String) {
+        guard let q = currentQuestion as? ReviewClozeQuestion else { return }
+        guard toastItem == nil && !showWrongAnswer else { return }
+        let correct = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() == q.answer.lowercased()
+        lastAnswerCorrect = correct
+        lastCorrectAnswer = q.answer
+        
+        if correct {
+            correctCount += 1
+            updateRating(wordId: q.wordId, rating: .good)
+            showCorrectAndAdvance()
+        } else {
+            wrongCount += 1
+            updateRating(wordId: q.wordId, rating: .again)
+            enqueueRetry(wordId: q.wordId)
+            withAnimation(.spring(duration: 0.3)) { showWrongAnswer = true }
+        }
+    }
+    
+    // MARK: - 拼写题作答
+    
+    func answerSpell(typed: String) {
+        guard let q = currentQuestion as? ReviewSpellQuestion else { return }
+        guard toastItem == nil && !showWrongAnswer else { return }
+        let correct = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() == q.wordToSpell.lowercased()
+        lastAnswerCorrect = correct
+        lastCorrectAnswer = q.wordToSpell
+        
+        if correct {
+            correctCount += 1
+            updateRating(wordId: q.wordId, rating: .good)
+            showCorrectAndAdvance()
+        } else {
+            wrongCount += 1
+            updateRating(wordId: q.wordId, rating: .again)
+            enqueueRetry(wordId: q.wordId)
+            withAnimation(.spring(duration: 0.3)) { showWrongAnswer = true }
+        }
+    }
+    
+    // MARK: - 连线消消乐
+    
+    func setupMatching() {
+        guard let q = currentQuestion as? ReviewMatchingQuestion else { return }
+        matchingRemainingPairs = q.pairs
+        matchingShuffledChinese = q.pairs.map { $0.chinese }.shuffled()
+        matchingSelectedEnglish = nil
+        matchingSelectedChinese = nil
+        matchingErrorFlash = false
+        matchingResults.removeAll()
+        for pair in q.pairs {
+            matchingResults[pair.id] = 0
+        }
+    }
+    
+    func selectMatchingEnglish(_ english: String) {
+        matchingSelectedEnglish = english
+        tryMatch()
+    }
+    
+    func selectMatchingChinese(_ chinese: String) {
+        matchingSelectedChinese = chinese
+        tryMatch()
+    }
+    
+    private func tryMatch() {
+        guard let eng = matchingSelectedEnglish, let ch = matchingSelectedChinese else { return }
+        
+        // 查找是否正确配对
+        if let _ = matchingRemainingPairs.first(where: { $0.english == eng && $0.chinese == ch }) {
+            // 正确配对 → 消除
+            matchingRemainingPairs.removeAll { $0.english == eng }
+            matchingShuffledChinese.removeAll { $0 == ch }
+            matchingSelectedEnglish = nil
+            matchingSelectedChinese = nil
+            
+            // 检查是否全部消除
+            if matchingRemainingPairs.isEmpty {
+                // 连线完成，计算每个词的评分
+                finishMatching()
+            }
+        } else {
+            // 配错
+            matchingErrorFlash = true
+            // 找到这个英文对应的 id，记录错误次数
+            if let pair = matchingRemainingPairs.first(where: { $0.english == eng }) {
+                matchingResults[pair.id, default: 0] += 1
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.matchingErrorFlash = false
+                self?.matchingSelectedEnglish = nil
+                self?.matchingSelectedChinese = nil
+            }
+        }
+    }
+    
+    private func finishMatching() {
+        guard let q = currentQuestion as? ReviewMatchingQuestion else { return }
+        
+        for pair in q.pairs {
+            let errors = matchingResults[pair.id] ?? 0
+            let rating: FSRSRating
+            switch errors {
+            case 0: rating = .easy
+            case 1: rating = .good
+            case 2: rating = .hard
+            default: rating = .again
+            }
+            
+            if rating == .again {
+                wrongCount += 1
+                enqueueRetry(wordId: pair.id)
+            } else {
+                correctCount += 1
+            }
+            updateRating(wordId: pair.id, rating: rating)
         }
         
-        resetSession()
-    }
-    
-    /// 回答当前单词
-    func answerCurrentWord(isCorrect: Bool) {
-        guard let word = currentWord else { return }
-        
-        answers[word.id] = isCorrect
-        hasAnswered = true
-        
-        // 记录学习结果到服务
-        recordLearningResult(wordId: word.id, isCorrect: isCorrect)
-    }
-    
-    /// 跳过当前单词
-    func skipCurrentWord() {
-        guard let word = currentWord else { return }
-        
-        skipped.insert(word.id)
+        // 直接进入下一题（连线无需单独反馈页）
         moveToNext()
     }
     
-    /// 移动到下一个单词
+    // MARK: - 反馈动画
+    
+    private func showCorrectAndAdvance() {
+        toastItem = ToastItem(style: .success, title: "正确!", duration: 0.8)
+    }
+    
+    /// Toast 自动消失后调用
+    func onCorrectToastDismissed() {
+        moveToNext()
+    }
+    
+    func dismissWrongAndContinue() {
+        withAnimation(.spring(duration: 0.25)) { showWrongAnswer = false }
+        moveToNext()
+    }
+    
+    // MARK: - 导航
+    
     func moveToNext() {
         currentIndex += 1
-        hasAnswered = false
         
-        // 如果复习完成，计算结果
-        if !hasWords {
-            calculateResults()
-        }
-    }
-    
-    /// 重新开始复习
-    func restart() {
-        resetSession()
-        startReview()
-    }
-    
-    // MARK: - Private Methods
-    
-    /// 重置会话状态
-    private func resetSession() {
-        currentIndex = 0
-        hasAnswered = false
-        answers.removeAll()
-        skipped.removeAll()
-        reviewResults = ReviewResults(totalWords: 0, correctCount: 0, wrongCount: 0, skippedCount: 0)
-    }
-    
-    /// 获取需要复习的单词列表
-    private func getWordsForReview() throws -> [SavedWord] {
-        let allWords = try wordbookService.loadSavedWords()
-        
-        // 按照优先级筛选复习单词
-        let selectedWords = selectWordsForReview(from: allWords)
-        
-        // 打乱顺序，让复习更有挑战性
-        return selectedWords.shuffled()
-    }
-    
-    /// 复习单词筛选逻辑
-    private func selectWordsForReview(from allWords: [SavedWord]) -> [SavedWord] {
-        let now = Date()
-        var reviewWords: [SavedWord] = []
-        
-        // 1. 新词全部包含 (level 0-2，即"新词"状态)
-        let newWords = allWords.filter { $0.masteryDescription == "新词" }
-        reviewWords.append(contentsOf: newWords)
-        
-        // 2. 其他词按时间和熟悉程度筛选
-        let otherWords = allWords.filter { $0.masteryDescription != "新词" }
-        
-        for word in otherWords {
-            if shouldIncludeInReview(word: word, currentTime: now) {
-                reviewWords.append(word)
+        // 如果所有题做完了，看看有没有 retry 队列
+        if currentIndex >= questions.count {
+            if !retryQueue.isEmpty {
+                // 为答错的词换题型再出一题
+                var retryQuestions: [any ReviewQuestion] = []
+                for word in retryQueue {
+                    // 用不同的题型
+                    let preferredType: ReviewQuestionType = [.engToChMCQ, .chToEngMCQ, .clozeFill].randomElement()!
+                    retryQuestions.append(QuestionGenerator.generateSingleQuestion(for: word, preferredType: preferredType))
+                }
+                questions.append(contentsOf: retryQuestions)
+                retryQueue.removeAll()
             }
         }
         
-        // 3. 按优先级排序
-        reviewWords.sort { word1, word2 in
-            // 新词优先级最高
-            if word1.masteryDescription == "新词" && word2.masteryDescription != "新词" {
-                return true
-            }
-            if word2.masteryDescription == "新词" && word1.masteryDescription != "新词" {
-                return false
-            }
-            
-            // 其他词按 level 排序，level 越小越优先
-            return word1.level < word2.level
-        }
-        
-        // 4. 限制复习数量，避免过载
-        let maxReviewCount = calculateOptimalReviewCount(totalWords: allWords.count)
-        return Array(reviewWords.prefix(maxReviewCount))
-    }
-    
-    /// 判断单词是否应该包含在这次复习中
-    private func shouldIncludeInReview(word: SavedWord, currentTime: Date) -> Bool {
-        // 1. 检查是否到了复习时间
-        if word.needsReview {
-            return true
-        }
-        
-        // 2. 对于学习中的词，给一些额外的复习机会
-        if word.masteryDescription == "学习中" {
-            // 如果距离添加时间较短，增加复习频率
-            let daysSinceAdded = currentTime.timeIntervalSince(word.addedDate) / (24 * 60 * 60)
-            if daysSinceAdded <= 7 && word.level <= 4 {
-                // 一周内的学习中单词，有一定概率被选中
-                return Double.random(in: 0...1) < 0.3
-            }
-        }
-        
-        // 3. 对于熟悉程度不够的词，增加复习频率
-        if word.totalReviews > 0 {
-            let correctRate = Double(word.correctCount) / Double(word.totalReviews)
-            if correctRate < 0.7 {
-                // 正确率低于70%的词，增加复习概率
-                return Double.random(in: 0...1) < 0.4
-            }
-        }
-        
-        return false
-    }
-    
-    /// 计算最佳复习数量
-    private func calculateOptimalReviewCount(totalWords: Int) -> Int {
-        switch totalWords {
-        case 0...20:
-            return totalWords // 单词少时全部复习
-        case 21...50:
-            return min(25, totalWords)
-        case 51...100:
-            return min(30, totalWords)
-        default:
-            return min(40, totalWords) // 最多40个词，避免复习疲劳
+        if currentIndex >= questions.count {
+            finishSession()
+        } else {
+            state = .question
         }
     }
     
-    /// 记录学习结果
-    private func recordLearningResult(wordId: String, isCorrect: Bool) {
-        do {
-            let result = LearningResult(
-                type: isCorrect ? .correct : .incorrect,
-                responseTime: 0, // TODO: 可以记录实际答题时间
-                timestamp: Date()
-            )
-            try wordbookService.recordLearningResult(wordId, result: result)
-        } catch {
-            print("记录学习结果失败: \(error)")
-        }
-    }
+    // MARK: - 结束
     
-    /// 计算复习结果
-    private func calculateResults() {
-        let correctCount = answers.values.filter { $0 }.count
-        let wrongCount = answers.values.filter { !$0 }.count
-        let skippedCount = skipped.count
+    private func finishSession() {
+        let duration = Date().timeIntervalSince(startTime)
+        let allWordIds = Set(wordRatings.keys)
         
-        reviewResults = ReviewResults(
-            totalWords: totalWords,
+        // 持久化 FSRS 评分
+        for (wordId, rating) in wordRatings {
+            try? wordbookService.recordReview(wordId, rating: rating)
+        }
+        
+        sessionResults = SessionResults(
+            totalWords: allWordIds.count,
             correctCount: correctCount,
             wrongCount: wrongCount,
-            skippedCount: skippedCount
+            duration: duration
         )
+        state = .completed
     }
-}
-
-// MARK: - 复习策略扩展
-extension ReviewSessionViewModel {
     
-    /// 智能复习推荐
-    /// 基于用户的学习模式和单词状态，动态调整复习策略
-    func getSmartReviewRecommendation() -> ReviewRecommendation {
-        do {
-            let allWords = try wordbookService.loadSavedWords()
-            let selectedWords = selectWordsForReview(from: allWords)
-            
-            let newWordsCount = selectedWords.filter { $0.masteryDescription == "新词" }.count
-            let reviewWordsCount = selectedWords.count - newWordsCount
-            
-            let estimatedMinutes = calculateEstimatedTime(wordCount: selectedWords.count)
-            
-            return ReviewRecommendation(
-                totalWords: selectedWords.count,
-                newWords: newWordsCount,
-                reviewWords: reviewWordsCount,
-                estimatedMinutes: estimatedMinutes,
-                difficulty: calculateDifficulty(for: selectedWords)
-            )
-        } catch {
-            return ReviewRecommendation(totalWords: 0, newWords: 0, reviewWords: 0, estimatedMinutes: 0, difficulty: .easy)
+    // MARK: - 辅助
+    
+    private func updateRating(wordId: String, rating: FSRSRating) {
+        // 取最差评分（一个词如果在连线和单独题中都出现）
+        if let existing = wordRatings[wordId] {
+            if rating.rawValue < existing.rawValue {
+                wordRatings[wordId] = rating
+            }
+        } else {
+            wordRatings[wordId] = rating
         }
     }
     
-    private func calculateEstimatedTime(wordCount: Int) -> Int {
-        // 每个单词平均需要30-45秒，包含思考和反馈时间
-        return Int(Double(wordCount) * 0.75) // 约45秒每词
-    }
-    
-    private func calculateDifficulty(for words: [SavedWord]) -> ReviewDifficulty {
-        let averageLevel = words.reduce(0) { $0 + $1.level } / max(words.count, 1)
-        
-        switch averageLevel {
-        case 0...2: return .easy
-        case 3...5: return .medium
-        default: return .hard
-        }
-    }
-}
-
-// MARK: - 辅助数据结构
-struct ReviewRecommendation {
-    let totalWords: Int
-    let newWords: Int
-    let reviewWords: Int
-    let estimatedMinutes: Int
-    let difficulty: ReviewDifficulty
-}
-
-enum ReviewDifficulty {
-    case easy, medium, hard
-    
-    var description: String {
-        switch self {
-        case .easy: return "简单"
-        case .medium: return "适中"
-        case .hard: return "困难"
-        }
-    }
-    
-    var color: Color {
-        switch self {
-        case .easy: return .green
-        case .medium: return .orange
-        case .hard: return .red
+    private func enqueueRetry(wordId: String) {
+        guard let word = wordsToReview.first(where: { $0.id == wordId }) else { return }
+        // 避免重复加入
+        if !retryQueue.contains(where: { $0.id == wordId }) {
+            retryQueue.append(word)
         }
     }
 }

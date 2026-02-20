@@ -11,8 +11,7 @@ class DictionaryViewModel: ObservableObject {
     @Published var selectedWord: Word?
     @Published var savedWordIds: Set<String> = []
     @Published var wordbookStats = WordbookStats(
-        totalWords: 0, needReviewCount: 0,
-        newWords: 0, learningWords: 0, reviewingWords: 0, masteredWords: 0
+        totalWords: 0, needReviewCount: 0
     )
     
     private let dictionaryService = DictionaryService.shared
@@ -87,7 +86,11 @@ class DictionaryViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    self.errorMessage = error.localizedDescription
+                    if case APIServiceError.httpError(let code, _) = error, code == 404 {
+                        self.errorMessage = "找不到单词「\(query)」，请检查拼写是否正确"
+                    } else {
+                        self.errorMessage = error.localizedDescription
+                    }
                     self.searchResults = []
                     self.isLoading = false
                 }

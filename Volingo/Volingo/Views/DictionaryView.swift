@@ -245,10 +245,8 @@ struct WordbookEntryCard: View {
                         
                         if stats.needReviewCount > 0 {
                             StatPill(value: "\(stats.needReviewCount)", label: "待复习", color: .orange)
-                        }
-                        
-                        if stats.masteredWords > 0 {
-                            StatPill(value: "\(stats.masteredWords)", label: "已掌握", color: .green)
+                        } else {
+                            StatPill(value: "✓", label: "已完成", color: .green)
                         }
                         
                         Spacer()

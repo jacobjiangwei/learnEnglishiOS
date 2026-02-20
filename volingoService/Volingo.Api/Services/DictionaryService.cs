@@ -50,6 +50,7 @@ public class DictionaryService : IDictionaryService
         }
 
         Rules:
+        - If the input is NOT a real, recognized English word (including slang, abbreviations, or non-English text), return ONLY: {"error": "UNKNOWN_WORD"}
         - Include ALL common parts of speech for this word
         - Each sense should have 1-2 examples
         - Provide 3-5 synonyms and antonyms if applicable
@@ -162,6 +163,15 @@ public class DictionaryService : IDictionaryService
             word, content.Length,
             completion.Value.Usage.InputTokenCount,
             completion.Value.Usage.OutputTokenCount);
+
+        // Check if AI rejected the word as not a real English word
+        using var jsonDoc = JsonDocument.Parse(content);
+        if (jsonDoc.RootElement.TryGetProperty("error", out var errorProp)
+            && errorProp.GetString() == "UNKNOWN_WORD")
+        {
+            _logger.LogInformation("AI rejected '{Word}' as not a real English word.", word);
+            throw new WordNotFoundException(word);
+        }
 
         var generated = JsonSerializer.Deserialize<DictionaryDocument>(content, new JsonSerializerOptions
         {

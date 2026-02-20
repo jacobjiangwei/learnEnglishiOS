@@ -125,6 +125,10 @@ public static class ApiEndpoints
                 var entry = await dictionary.LookupAsync(word);
                 return Results.Ok(entry);
             }
+            catch (WordNotFoundException)
+            {
+                return Results.Problem(detail: $"'{word}' is not a recognized English word.", statusCode: 404, title: "Word Not Found");
+            }
             catch (ArgumentException)
             {
                 return Results.Problem(detail: "Word parameter is invalid.", statusCode: 400, title: "Bad Request");
