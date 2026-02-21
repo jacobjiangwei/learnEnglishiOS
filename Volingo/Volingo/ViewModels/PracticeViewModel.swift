@@ -174,8 +174,9 @@ class PracticeViewModel: ObservableObject {
         do {
             let resp = try decoder.decode(QuestionsResponse<[APIMCQQuestion]>.self, from: data)
             let questions = resp.questions.map { q in
-                MCQQuestion(id: q.id, stem: q.stem, options: q.options,
-                            correctIndex: q.correctIndex, explanation: q.explanation)
+                MCQQuestion(id: q.id, stem: q.stem, translation: q.translation,
+                            options: q.options, correctIndex: q.correctIndex,
+                            explanation: q.explanation)
             }
             mcqQuestions = .loaded(questions)
         } catch {
@@ -221,7 +222,9 @@ class PracticeViewModel: ObservableObject {
             let items = resp.questions.map { q in
                 TextInputItem(
                     id: q.id, sourceText: q.sourceText,
+                    sourceTranslation: nil,
                     instruction: q.direction == "zhToEn" ? "请翻译成英文" : "请翻译成中文",
+                    instructionTranslation: nil,
                     referenceAnswer: q.referenceAnswer, keywords: q.keywords,
                     explanation: q.explanation ?? "", isSelfEvaluated: true
                 )
@@ -237,7 +240,10 @@ class PracticeViewModel: ObservableObject {
             let resp = try decoder.decode(QuestionsResponse<[APIRewritingQuestion]>.self, from: data)
             let items = resp.questions.map { q in
                 TextInputItem(
-                    id: q.id, sourceText: q.originalSentence, instruction: q.instruction,
+                    id: q.id, sourceText: q.originalSentence,
+                    sourceTranslation: nil,
+                    instruction: q.instruction,
+                    instructionTranslation: q.instructionTranslation,
                     referenceAnswer: q.referenceAnswer, keywords: [],
                     explanation: q.explanation ?? "", isSelfEvaluated: true
                 )
@@ -308,7 +314,9 @@ class PracticeViewModel: ObservableObject {
             let items = resp.questions.map { q in
                 TextInputItem(
                     id: q.id, sourceText: q.prompt,
+                    sourceTranslation: nil,
                     instruction: "字数要求：\(q.wordLimit.min)-\(q.wordLimit.max) 词",
+                    instructionTranslation: nil,
                     referenceAnswer: q.referenceAnswer, keywords: [],
                     explanation: "参考范文已展示。请对照学习。", isSelfEvaluated: true
                 )
@@ -323,8 +331,9 @@ class PracticeViewModel: ObservableObject {
         do {
             let resp = try decoder.decode(QuestionsResponse<[APIVocabularyQuestion]>.self, from: data)
             let questions = resp.questions.map { q in
-                MCQQuestion(id: q.id, stem: q.stem, options: q.options,
-                            correctIndex: q.correctIndex, explanation: q.explanation ?? "")
+                MCQQuestion(id: q.id, stem: q.stem, translation: q.translation,
+                            options: q.options, correctIndex: q.correctIndex,
+                            explanation: q.explanation ?? "")
             }
             vocabularyQuestions = .loaded(questions)
         } catch {
@@ -336,8 +345,9 @@ class PracticeViewModel: ObservableObject {
         do {
             let resp = try decoder.decode(QuestionsResponse<[APIGrammarQuestion]>.self, from: data)
             let questions = resp.questions.map { q in
-                MCQQuestion(id: q.id, stem: q.stem, options: q.options,
-                            correctIndex: q.correctIndex, explanation: q.explanation ?? "")
+                MCQQuestion(id: q.id, stem: q.stem, translation: q.translation,
+                            options: q.options, correctIndex: q.correctIndex,
+                            explanation: q.explanation ?? "")
             }
             grammarQuestions = .loaded(questions)
         } catch {
@@ -384,6 +394,7 @@ class PracticeViewModel: ObservableObject {
                 MCQQuestion(
                     id: q.id,
                     stem: q.stem,
+                    translation: q.translation,
                     options: q.options,
                     correctIndex: q.correctIndex,
                     explanation: q.explanation
@@ -457,7 +468,9 @@ class PracticeViewModel: ObservableObject {
                 TextInputItem(
                     id: q.id,
                     sourceText: q.sourceText,
+                    sourceTranslation: nil,
                     instruction: q.direction == "zhToEn" ? "请翻译成英文" : "请翻译成中文",
+                    instructionTranslation: nil,
                     referenceAnswer: q.referenceAnswer,
                     keywords: q.keywords,
                     explanation: q.explanation ?? "",
@@ -480,7 +493,9 @@ class PracticeViewModel: ObservableObject {
                 TextInputItem(
                     id: q.id,
                     sourceText: q.originalSentence,
+                    sourceTranslation: nil,
                     instruction: q.instruction,
+                    instructionTranslation: q.instructionTranslation,
                     referenceAnswer: q.referenceAnswer,
                     keywords: [],
                     explanation: q.explanation ?? "",
@@ -503,7 +518,9 @@ class PracticeViewModel: ObservableObject {
                 TextInputItem(
                     id: q.id,
                     sourceText: q.prompt,
+                    sourceTranslation: nil,
                     instruction: "字数要求：\(q.wordLimit.min)-\(q.wordLimit.max) 词",
+                    instructionTranslation: nil,
                     referenceAnswer: q.referenceAnswer,
                     keywords: [],
                     explanation: "参考范文已展示。请对照学习。",
@@ -612,6 +629,7 @@ class PracticeViewModel: ObservableObject {
                 MCQQuestion(
                     id: q.id,
                     stem: q.stem,
+                    translation: q.translation,
                     options: q.options,
                     correctIndex: q.correctIndex,
                     explanation: q.explanation ?? ""
@@ -634,6 +652,7 @@ class PracticeViewModel: ObservableObject {
                 MCQQuestion(
                     id: q.id,
                     stem: q.stem,
+                    translation: q.translation,
                     options: q.options,
                     correctIndex: q.correctIndex,
                     explanation: q.explanation ?? ""

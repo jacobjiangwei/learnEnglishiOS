@@ -108,7 +108,7 @@ struct PracticeRouterView: View {
         case .idle, .loading:
             loadingView()
         case .loaded(let questions):
-            MCQPracticeView(title: title, questions: questions, onAnswer: handleAnswer)
+            MCQPracticeView(title: title, questions: questions, showTranslationHint: store.userState.confirmedLevel?.isPrimary ?? false, onAnswer: handleAnswer)
         case .error(let msg):
             errorView(msg)
         }
@@ -150,7 +150,7 @@ struct PracticeRouterView: View {
         case .idle, .loading:
             loadingView()
         case .loaded(let items):
-            TextInputPracticeView(title: title, items: items, onAnswer: handleAnswer)
+            TextInputPracticeView(title: title, items: items, showTranslationHint: store.userState.confirmedLevel?.isPrimary ?? false, onAnswer: handleAnswer)
         case .error(let msg):
             errorView(msg)
         }

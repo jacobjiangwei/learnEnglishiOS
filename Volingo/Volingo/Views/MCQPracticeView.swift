@@ -11,10 +11,12 @@ import SwiftUI
 struct MCQPracticeView: View {
     let title: String
     let questions: [MCQQuestion]
+    var showTranslationHint: Bool = false  // 小学阶段可显示翻译提示
     var onAnswer: ((String, Bool) -> Void)? = nil
     @State private var currentIndex = 0
     @State private var selectedIndex: Int? = nil
     @State private var showExplanation = false
+    @State private var showTranslation = false
     @State private var correctCount = 0
     @State private var showResult = false
 
@@ -33,7 +35,26 @@ struct MCQPracticeView: View {
 
                         Text(question.stem)
                             .font(.title3.bold())
-                            .padding(.bottom, 8)
+                            .padding(.bottom, 4)
+
+                        // 小学阶段：可点击查看中文翻译
+                        if showTranslationHint, let translation = question.translation, !translation.isEmpty {
+                            if showTranslation {
+                                Text(translation)
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .padding(.bottom, 4)
+                            } else {
+                                Button {
+                                    withAnimation { showTranslation = true }
+                                } label: {
+                                    Label("看不懂？点击查看翻译", systemImage: "translate")
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
+                                }
+                                .padding(.bottom, 4)
+                            }
+                        }
 
                         ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
                             OptionButton(
@@ -77,6 +98,7 @@ struct MCQPracticeView: View {
             currentIndex += 1
             selectedIndex = nil
             showExplanation = false
+            showTranslation = false
         } else {
             showResult = true
         }
@@ -97,7 +119,7 @@ struct MCQPracticeView: View {
 #Preview {
     NavigationView {
         MCQPracticeView(title: "选择题", questions: [
-            MCQQuestion(id: "preview-1", stem: "The past tense of 'go' is ___.", options: ["goed", "went", "gone", "going"], correctIndex: 1, explanation: "go 的过去式是 went。"),
-        ])
+            MCQQuestion(id: "preview-1", stem: "The past tense of 'go' is ___.", translation: "“go”的过去式是___。", options: ["goed", "went", "gone", "going"], correctIndex: 1, explanation: "go 的过去式是 went。"),
+        ], showTranslationHint: true)
     }
 }

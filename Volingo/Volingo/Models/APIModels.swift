@@ -92,7 +92,6 @@ struct APIRewritingQuestion: Codable, Identifiable {
     let questionType: String
     let textbookCode: String
     let originalSentence: String
-    let originalTranslation: String?
     let instruction: String
     let instructionTranslation: String?
     let referenceAnswer: String

@@ -147,7 +147,7 @@ public class OpenAIQuestionGeneratorService(
                 - 中译英和英译中各占一半
                 """),
             new("rewriting", "句型改写题", 5, """
-                JSON 字段: id, questionType("rewriting"), originalSentence, originalTranslation,
+                JSON 字段: id, questionType("rewriting"), originalSentence,
                   instruction, instructionTranslation, referenceAnswer, referenceTranslation,
                   explanation
                 """),
@@ -155,6 +155,7 @@ public class OpenAIQuestionGeneratorService(
                 JSON 字段: id, questionType("sentenceOrdering"), shuffledParts(打乱的单词/短语数组),
                   correctOrder(正确顺序的索引数组), correctSentence, translation,
                   explanation
+                - 自查：shuffledParts[correctOrder[0]] + " " + shuffledParts[correctOrder[1]] + ... 必须恰好等于 correctSentence
                 """),
         ],
         QuestionBatch.ReadingWriting =>
@@ -197,7 +198,7 @@ public class OpenAIQuestionGeneratorService(
     private static string BuildSystemPrompt(GenerateQuestionsRequest request, TypeSpec spec)
     {
         return $$"""
-            你是一个专业的英语教育出题专家。
+            你是一个经验丰富、极其严谨的英语教育出题专家。每道题都必须经过反复验证才能输出，绝不允许出现答案错误、多个正确选项、或数据不一致的情况。
             
             出题规范：
             - 每道选择题必须有且只有一个正确答案。出完题后自查：把每个选项逐一代入 stem，必须只有正确答案成立、其余三个都说不通，否则废弃重出
@@ -377,14 +378,23 @@ public class OpenAIQuestionGeneratorService(
         var questionsJson = JsonSerializer.Serialize(questions, new JsonSerializerOptions { WriteIndented = true });
 
         var systemPrompt = """
-            你是英语考试出题质量审核员。逐题检查以下题目，对每道题给出 pass 或 fail 的判定。
+            你是一个极其严格、吹毛求疵的英语考试出题质量审核员。你的职责是找出每一道题的每一个问题，宁可错杀不可放过。
+            逐题检查以下题目，对每道题给出 pass 或 fail 的判定。只有完全没有问题的题目才能 pass。
 
-            检查标准（按优先级排序）：
+            检查标准（全部必须满足，任一不满足即 fail）：
             1. 答案唯一性（最重要）：把每个选项逐一代入 stem，必须只有 correctIndex 指向的选项成立，其余三个都说不通。如果有任何一个干扰项也能说通，直接 fail
             2. stem 不泄露：题干中不能包含正确答案的英文原词
             3. 干扰项合理：所有选项词性一致、语法上可替换，仅语义不同
             4. 答案正确：correctIndex 指向的选项确实是该题的正确答案
             5. 格式完整：必需字段不缺失
+            6. 排序题：按 correctOrder 重排 shuffledParts 后拼接的句子必须等于 correctSentence，否则 fail
+            7. 翻译准确：中文翻译必须准确对应英文内容，不能有遗漏或曲解
+            8. 解析质量：explanation 必须清晰解释为什么正确答案是对的、为什么其他选项不对
+
+            审核态度：
+            - 对每道题都要逐字逐句验证，不要因为"看起来大概对"就放过
+            - 有任何疑虑就 fail，在 issues 中写清楚具体问题
+            - 特别注意细节：拼写、标点、大小写、语法一致性
 
             输出严格 JSON：{"results": [{"index": 0, "pass": true/false, "issues": ["问题描述"]}]}
             index 从 0 开始，与输入数组对应。pass 为 true 时 issues 为空数组。

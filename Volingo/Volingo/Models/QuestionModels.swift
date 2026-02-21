@@ -21,6 +21,7 @@ struct MCQQuestion: PracticeQuestion {
     let id: String
     let type: QuestionType = .multipleChoice
     let stem: String            // 题干
+    let translation: String?    // 题干中文翻译（小学阶段可查看）
     let options: [String]       // 选项
     let correctIndex: Int       // 正确答案索引
     let explanation: String     // 解析

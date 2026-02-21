@@ -48,6 +48,16 @@ enum UserLevel: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Whether this is an elementary school level (grades 1-6)
+    var isPrimary: Bool {
+        switch self {
+        case .primary1, .primary2, .primary3, .primary4, .primary5, .primary6:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// Short Chinese subtitle shown below the label.
     var subtitle: String {
         switch self {

@@ -170,7 +170,7 @@ struct CachedPracticeRouterView: View {
         let s = state ?? vm.mcqQuestions
         switch s {
         case .idle, .loading: loadingView()
-        case .loaded(let q): MCQPracticeView(title: title, questions: q, onAnswer: handleAnswer)
+        case .loaded(let q): MCQPracticeView(title: title, questions: q, showTranslationHint: store.userState.confirmedLevel?.isPrimary ?? false, onAnswer: handleAnswer)
         case .error(let msg): Text(msg).foregroundColor(.secondary)
         }
     }
@@ -195,7 +195,7 @@ struct CachedPracticeRouterView: View {
     private func textInputContent(state: LoadingState<[TextInputItem]>, title: String) -> some View {
         switch state {
         case .idle, .loading: loadingView()
-        case .loaded(let items): TextInputPracticeView(title: title, items: items, onAnswer: handleAnswer)
+        case .loaded(let items): TextInputPracticeView(title: title, items: items, showTranslationHint: store.userState.confirmedLevel?.isPrimary ?? false, onAnswer: handleAnswer)
         case .error(let msg): Text(msg).foregroundColor(.secondary)
         }
     }

@@ -98,6 +98,7 @@ private struct HistorySessionRow: View {
 
 struct HistoryReplayRouterView: View {
     let session: HistorySession
+    @EnvironmentObject private var store: UserStateStore
     @StateObject private var vm = PracticeViewModel()
 
     private var resolvedType: QuestionType {
@@ -149,7 +150,7 @@ struct HistoryReplayRouterView: View {
         let s = state ?? vm.mcqQuestions
         switch s {
         case .idle, .loading: ProgressView()
-        case .loaded(let q): MCQPracticeView(title: title, questions: q, onAnswer: nil)
+        case .loaded(let q): MCQPracticeView(title: title, questions: q, showTranslationHint: store.userState.confirmedLevel?.isPrimary ?? false, onAnswer: nil)
         case .error(let msg): Text(msg).foregroundColor(.secondary)
         }
     }
@@ -176,7 +177,7 @@ struct HistoryReplayRouterView: View {
     private func replayTextInput(state: LoadingState<[TextInputItem]>, title: String) -> some View {
         switch state {
         case .idle, .loading: ProgressView()
-        case .loaded(let items): TextInputPracticeView(title: title, items: items, onAnswer: nil)
+        case .loaded(let items): TextInputPracticeView(title: title, items: items, showTranslationHint: store.userState.confirmedLevel?.isPrimary ?? false, onAnswer: nil)
         case .error(let msg): Text(msg).foregroundColor(.secondary)
         }
     }
