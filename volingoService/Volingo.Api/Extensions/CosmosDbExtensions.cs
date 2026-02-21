@@ -1,5 +1,4 @@
 using Microsoft.Azure.Cosmos;
-using Volingo.Api.Services;
 
 namespace Volingo.Api.Extensions;
 
@@ -25,20 +24,6 @@ public static class CosmosDbExtensions
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("dailyPackages", "/textbookCode"));
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("textbook", "/textbook"));
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("dictionary", "/word"));
-
-        // Seed question bank in background (don't block app.Run())
-        var questionsContainer = db.GetContainer("questions");
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await QuestionSeeder.SeedAsync(questionsContainer, logger);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Question seeding failed.");
-            }
-        });
 
         logger.LogInformation("✅ Cosmos DB database ready.");
         return app;

@@ -39,6 +39,8 @@ builder.Services.AddScoped<IDictionaryService, DictionaryService>();
 builder.Services.AddScoped<ITextbookService, CosmosTextbookService>();
 builder.Services.AddSingleton<IDocumentIntelligenceService, AzureDocumentIntelligenceService>();
 builder.Services.AddSingleton<ITextbookAnalyzerService, OpenAITextbookAnalyzerService>();
+builder.Services.AddSingleton<OpenAIQuestionGeneratorService>();
+builder.Services.AddSingleton<IQuestionGeneratorService>(sp => sp.GetRequiredService<OpenAIQuestionGeneratorService>());
 
 // JSON serialization — HttpJsonOptions defaults to JsonSerializerDefaults.Web
 // (camelCase + case-insensitive read). We add further customizations:

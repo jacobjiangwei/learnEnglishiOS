@@ -11,7 +11,6 @@ import SwiftUI
 final class UserStateStore: ObservableObject {
     @Published private(set) var userState: UserState = UserState()
     @Published var onboardingEntry: OnboardingEntry = .full
-    @Published var onboardingSkipTest: Bool = false
     private let storageFile = "user_state.json"
 
     init() {
@@ -40,20 +39,20 @@ final class UserStateStore: ObservableObject {
         userState.isOnboardingCompleted = false
         userState.selectedLevel = nil
         userState.selectedTextbook = nil
+        userState.selectedSemester = nil
         userState.confirmedLevel = nil
         userState.lastAssessmentScore = nil
         userState.lastAssessmentAt = nil
         onboardingEntry = .full
-        onboardingSkipTest = false
         save()
     }
 
     func startModifyGoal() {
         onboardingEntry = .selectLevel
-        onboardingSkipTest = true
         userState.isOnboardingCompleted = false
         userState.selectedLevel = nil
         userState.selectedTextbook = nil
+        userState.selectedSemester = nil
         userState.confirmedLevel = nil
         userState.lastAssessmentScore = nil
         userState.lastAssessmentAt = nil
@@ -62,7 +61,6 @@ final class UserStateStore: ObservableObject {
 
     func startRetest(keepTextbook: Bool = true) {
         onboardingEntry = .retest
-        onboardingSkipTest = false
         userState.isOnboardingCompleted = false
         if let confirmed = userState.confirmedLevel {
             userState.selectedLevel = confirmed
@@ -84,7 +82,6 @@ final class UserStateStore: ObservableObject {
         userState.lastAssessmentScore = nil
         userState.lastAssessmentAt = nil
         onboardingEntry = .full
-        onboardingSkipTest = false
         save()
     }
 
@@ -103,13 +100,18 @@ final class UserStateStore: ObservableObject {
         try? StorageService.shared.saveToFile(userState, filename: storageFile)
     }
 
+    func updateSelectedSemester(_ semester: Semester) {
+        userState.selectedSemester = semester
+        save()
+    }
+
     /// 当前教材编码，用于 API 请求（如 "juniorPEP-7a"）
     var currentTextbookCode: String? {
         guard let textbook = userState.selectedTextbook,
               let level = userState.confirmedLevel ?? userState.selectedLevel else {
             return userState.selectedTextbook?.seriesCode
         }
-        // 默认上学期
-        return textbook.code(for: level, term: .first)
+        let term = userState.selectedSemester ?? .first
+        return textbook.code(for: level, term: term)
     }
 }

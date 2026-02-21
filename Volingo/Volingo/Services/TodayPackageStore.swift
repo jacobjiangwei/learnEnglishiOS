@@ -49,9 +49,9 @@ class TodayPackageStore: ObservableObject {
         return fmt.string(from: Date())
     }
 
-    /// 是否有今天的缓存
-    var hasTodayCache: Bool {
-        cached?.date == todayString
+    /// 是否有今天的缓存（且教材匹配）
+    func hasTodayCache(for textbookCode: String) -> Bool {
+        cached?.date == todayString && cached?.textbookCode == textbookCode
     }
 
     /// 是否全部完成

@@ -124,6 +124,15 @@ struct ProfileView: View {
                             .foregroundColor(.secondary)
                     }
 
+                    if onboardingStore.userState.needsSemester {
+                        HStack {
+                            Text("学期")
+                            Spacer()
+                            Text(currentSemesterLabel)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
                     if let score = onboardingStore.userState.lastAssessmentScore {
                         HStack {
                             Text("最近测评")
@@ -243,6 +252,13 @@ struct ProfileView: View {
     private var currentTextbookLabel: String {
         if let textbook = onboardingStore.userState.selectedTextbook {
             return textbook.rawValue
+        }
+        return "未选择"
+    }
+
+    private var currentSemesterLabel: String {
+        if let semester = onboardingStore.userState.selectedSemester {
+            return "\(semester.title)学期"
         }
         return "未选择"
     }

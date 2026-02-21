@@ -201,8 +201,8 @@ struct SavedWordRowView: View {
                         .font(.headline)
                         .fontWeight(.semibold)
                     
-                    if let phonetic = savedWord.word.phonetic {
-                        Text(phonetic)
+                    if let phonetic = savedWord.word.phonetic, !phonetic.isEmpty {
+                        Text(PhoneticFormatter.normalize(phonetic))
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -294,23 +294,60 @@ struct EmptyFilterResultsView: View {
 struct SavedWordDetailView: View {
     let savedWord: SavedWord
     @Environment(\.dismiss) private var dismiss
+    @State private var navigationPath: [String] = []
     
     var body: some View {
-        NavigationView {
+        NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    // 单词标题 + 音标 + 发音
                     WordHeaderView(word: savedWord.word)
                     
                     // 学习进度
                     LearningProgressView(savedWord: savedWord)
                     
+                    Divider()
+                    
                     // 词义详情
-                    WordbookSensesView(senses: savedWord.word.senses)
+                    WordSensesView(senses: savedWord.word.senses)
+                    
+                    // 词形变化
+                    if let exchange = savedWord.word.exchange, hasWordForms(exchange) {
+                        Divider()
+                        WordFormsView(exchange: exchange)
+                    }
+                    
+                    // 同义词反义词
+                    if !savedWord.word.synonyms.isEmpty || !savedWord.word.antonyms.isEmpty {
+                        Divider()
+                        SynonymsAntonymsView(
+                            synonyms: savedWord.word.synonyms,
+                            antonyms: savedWord.word.antonyms,
+                            onWordTap: { word in
+                                navigationPath.append(word)
+                            }
+                        )
+                    }
+                    
+                    // 常用短语
+                    if !savedWord.word.relatedPhrases.isEmpty {
+                        Divider()
+                        RelatedPhrasesView(phrases: savedWord.word.relatedPhrases)
+                    }
+                    
+                    // 用法说明
+                    if let notes = savedWord.word.usageNotes, !notes.isEmpty {
+                        Divider()
+                        UsageNotesView(notes: notes)
+                    }
                 }
                 .padding()
             }
             .navigationTitle(savedWord.word.word)
             .navigationBarTitleDisplayMode(.large)
+            .navigationDestination(for: String.self) { word in
+                LinkedWordDetailView(word: word, navigationPath: $navigationPath)
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("关闭") {
@@ -319,7 +356,12 @@ struct SavedWordDetailView: View {
                 }
             }
         }
-        .navigationViewStyle(.stack)
+    }
+    
+    private func hasWordForms(_ exchange: WordExchange) -> Bool {
+        return [exchange.plural, exchange.pastTense, exchange.pastParticiple,
+                exchange.presentParticiple, exchange.comparative, exchange.superlative,
+                exchange.thirdPersonSingular].compactMap { $0 }.filter { !$0.isEmpty }.count > 0
     }
 }
 

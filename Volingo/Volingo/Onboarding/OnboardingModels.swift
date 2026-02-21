@@ -408,6 +408,13 @@ enum Semester: String, Codable, CaseIterable, Identifiable {
         case .second: return "下"
         }
     }
+
+    /// 根据当前日期推荐学期：9月–1月 = 上学期，2月–7月 = 下学期
+    static var current: Semester {
+        let month = Calendar.current.component(.month, from: Date())
+        // 9,10,11,12,1 -> 上学期; 2,3,4,5,6,7 -> 下学期; 8月开学前算上学期
+        return (month >= 2 && month <= 7) ? .second : .first
+    }
 }
 
 enum TextbookGroup: String, CaseIterable, Identifiable {
@@ -453,11 +460,20 @@ struct UserState: Codable {
     var isOnboardingCompleted: Bool = false
     var selectedLevel: UserLevel?
     var selectedTextbook: TextbookOption?
+    var selectedSemester: Semester?
     var confirmedLevel: UserLevel?
     var lastAssessmentScore: Double?
     var lastAssessmentAt: Date?
     var createdAt: Date = Date()
     var preferences: LearningPreferences = LearningPreferences()
+
+    /// Whether the selected level requires a semester choice (小学/初中/高中).
+    /// `gradeNumber` is non-nil only for primary1…senior3 (grades 1-12),
+    /// so this is true exclusively for 小学一年级 ~ 高三.
+    var needsSemester: Bool {
+        guard let level = selectedLevel ?? confirmedLevel else { return false }
+        return level.gradeNumber != nil
+    }
 }
 
 enum OnboardingEntry {

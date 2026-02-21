@@ -16,19 +16,21 @@ class HomeViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     var hasLoaded = false
+    private var lastTextbookCode: String?
 
     private let api = APIService.shared
     private let packageStore = TodayPackageStore.shared
 
     func load(textbookCode: String, force: Bool = false) {
-        guard force || !hasLoaded else { return }
+        guard force || !hasLoaded || lastTextbookCode != textbookCode else { return }
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
+        lastTextbookCode = textbookCode
 
         Task {
-            // 1. 今日套餐：优先用本地缓存
-            if packageStore.hasTodayCache, let cached = packageStore.cached {
+            // 1. 今日套餐：优先用本地缓存（教材匹配时）
+            if packageStore.hasTodayCache(for: textbookCode), let cached = packageStore.cached {
                 todayPackage = buildPackageFromCache(cached)
             } else {
                 // 无缓存或非今天 → 从 API 拉取并缓存

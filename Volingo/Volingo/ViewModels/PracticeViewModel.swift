@@ -188,7 +188,7 @@ class PracticeViewModel: ObservableObject {
             let resp = try decoder.decode(QuestionsResponse<[APIClozeQuestion]>.self, from: data)
             let questions = resp.questions.map { q in
                 ClozeQuestion(id: q.id, sentence: q.sentence, answer: q.correctAnswer,
-                              hint: q.hints?.first, explanation: q.explanation ?? "")
+                              hints: (q.hints ?? []).shuffled(), explanation: q.explanation ?? "")
             }
             clozeQuestions = .loaded(questions)
         } catch {
@@ -406,7 +406,7 @@ class PracticeViewModel: ObservableObject {
                     id: q.id,
                     sentence: q.sentence,
                     answer: q.correctAnswer,
-                    hint: q.hints?.first,
+                    hints: (q.hints ?? []).shuffled(),
                     explanation: q.explanation ?? ""
                 )
             }

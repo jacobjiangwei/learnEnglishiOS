@@ -1,3 +1,6 @@
+using System.Text;
+using System.Text.Json;
+using Microsoft.Azure.Cosmos;
 using Volingo.Api.Models;
 using Volingo.Api.Services;
 
@@ -171,6 +174,199 @@ public static class AdminEndpoints
         .WithTags("Admin")
         .ExcludeFromDescription();
 
+        // ── Generate questions for a unit + batch ──
+        app.MapPost("/api/v1/admin/generate-questions", async (
+            ITextbookService textbooks,
+            IQuestionGeneratorService generator,
+            GenerateQuestionsApiRequest request) =>
+        {
+            // Load the document
+            var doc = await textbooks.GetDocumentAsync(request.DocId, request.Textbook);
+            if (doc?.Analysis is null)
+                return Results.BadRequest(new { detail = "文档不存在或未完成分析" });
+
+            var unit = doc.Analysis.Units.FirstOrDefault(u => u.UnitNumber == request.UnitNumber);
+            if (unit is null)
+                return Results.BadRequest(new { detail = $"单元 {request.UnitNumber} 不存在" });
+
+            // Determine level from textbookCode
+            var level = ResolveLevelFromTextbookCode(request.DocId);
+
+            var genRequest = new GenerateQuestionsRequest(
+                TextbookCode: request.DocId,
+                DisplayName: doc.DisplayName,
+                Level: level,
+                UnitNumber: request.UnitNumber,
+                Unit: unit,
+                Glossary: doc.Analysis.VocabularyGlossary,
+                Batch: request.Batch
+            );
+
+            try
+            {
+                var questions = await generator.GenerateQuestionsAsync(genRequest);
+                return Results.Ok(new
+                {
+                    success = true,
+                    textbookCode = request.DocId,
+                    unitNumber = request.UnitNumber,
+                    batch = request.Batch.ToString(),
+                    count = questions.Count,
+                    questions
+                });
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem(detail: $"出题失败: {ex.Message}", statusCode: 500);
+            }
+        })
+        .WithName("AdminGenerateQuestions")
+        .WithTags("Admin");
+
+        // ── Eval: AI quality check on generated questions ──
+        app.MapPost("/api/v1/admin/eval-questions", async (
+            OpenAIQuestionGeneratorService evaluator,
+            CommitQuestionsRequest request) =>
+        {
+            if (request.Questions is null || request.Questions.Count == 0)
+                return Results.BadRequest(new { detail = "没有题目可以评审" });
+
+            try
+            {
+                var results = await evaluator.EvalQuestionsAsync(request.Questions);
+                return Results.Ok(new
+                {
+                    success = true,
+                    total = request.Questions.Count,
+                    passed = results.Count(r => r.Pass),
+                    failed = results.Count(r => !r.Pass),
+                    results
+                });
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem(detail: $"质检失败: {ex.Message}", statusCode: 500);
+            }
+        })
+        .WithName("AdminEvalQuestions")
+        .WithTags("Admin");
+
+        // ── Commit generated questions to Cosmos DB ──
+        app.MapPost("/api/v1/admin/commit-questions", async (
+            CosmosClient cosmos,
+            IConfiguration config,
+            CommitQuestionsRequest request) =>
+        {
+            if (request.Questions is null || request.Questions.Count == 0)
+                return Results.BadRequest(new { detail = "没有题目可以入库" });
+
+            var dbName = config["CosmosDb:DatabaseName"] ?? "volingo";
+            var container = cosmos.GetContainer(dbName, "questions");
+
+            int committed = 0;
+            var errors = new List<string>();
+
+            foreach (var q in request.Questions)
+            {
+                try
+                {
+                    // Ensure id and textbookCode exist
+                    if (!q.ContainsKey("id"))
+                        q["id"] = Guid.NewGuid().ToString();
+                    if (!q.TryGetValue("textbookCode", out var tbObj) || tbObj is null)
+                    {
+                        errors.Add("题目缺少 textbookCode");
+                        continue;
+                    }
+
+                    var textbookCode = tbObj.ToString()!;
+
+                    // Shuffle options so correct answer position is random
+                    OpenAIQuestionGeneratorService.ShuffleOptions(q);
+
+                    var json = JsonSerializer.Serialize(q);
+                    using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+                    await container.UpsertItemStreamAsync(stream, new PartitionKey(textbookCode));
+                    committed++;
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"题目入库失败: {ex.Message}");
+                }
+            }
+
+            return Results.Ok(new
+            {
+                success = true,
+                committed,
+                total = request.Questions.Count,
+                errors = errors.Count > 0 ? errors : null
+            });
+        })
+        .WithName("AdminCommitQuestions")
+        .WithTags("Admin");
+
         return app;
     }
+
+    /// <summary>
+    /// Map textbookCode to UserLevel display name.
+    /// e.g. "primaryPEP-3a" → "小学三年级", "juniorPEP-8b" → "初二"
+    /// </summary>
+    private static string ResolveLevelFromTextbookCode(string textbookCode)
+    {
+        // Non-grade-sync series
+        var nonGradeMap = new Dictionary<string, string>
+        {
+            ["collegeCet4"] = "四级", ["collegeCet6"] = "六级",
+            ["graduateExam"] = "考研", ["preschoolPhonics"] = "启蒙",
+            ["cefr"] = "CEFR", ["cambridge"] = "剑桥",
+            ["longman"] = "朗文", ["ielts"] = "IELTS", ["toefl"] = "TOEFL",
+        };
+
+        foreach (var (prefix, level) in nonGradeMap)
+        {
+            if (textbookCode == prefix) return level;
+        }
+
+        // Grade-sync series: extract grade number from "seriesCode-{grade}{a|b}"
+        var dashIdx = textbookCode.LastIndexOf('-');
+        if (dashIdx < 0) return textbookCode;
+
+        var volPart = textbookCode[(dashIdx + 1)..];
+        var gradeStr = new string(volPart.TakeWhile(char.IsDigit).ToArray());
+        if (!int.TryParse(gradeStr, out var grade)) return textbookCode;
+
+        return grade switch
+        {
+            >= 1 and <= 6 => $"小学{GradeChinese(grade)}年级",
+            7 => "初一",
+            8 => "初二",
+            9 => "初三",
+            10 => "高一",
+            11 => "高二",
+            12 => "高三",
+            _ => $"{grade}年级"
+        };
+    }
+
+    private static string GradeChinese(int n) => n switch
+    {
+        1 => "一", 2 => "二", 3 => "三",
+        4 => "四", 5 => "五", 6 => "六",
+        _ => n.ToString()
+    };
 }
+
+// ── Request DTOs ──
+
+public record GenerateQuestionsApiRequest(
+    string DocId,
+    string Textbook,
+    int UnitNumber,
+    QuestionBatch Batch
+);
+
+public record CommitQuestionsRequest(
+    List<Dictionary<string, object>> Questions
+);

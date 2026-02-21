@@ -25,7 +25,7 @@ public class DictionaryService : IDictionaryService
 
         {
           "word": "...",
-          "phonetic": "IPA notation",
+          "phonetic": "/IPA notation/",
           "senses": [
             {
               "pos": "part of speech abbreviation (n., v., adj., adv., prep., conj., etc.)",
@@ -57,6 +57,7 @@ public class DictionaryService : IDictionaryService
         - Related phrases should be real, commonly used collocations
         - Usage notes should target Chinese English learners
         - Set irrelevant exchange fields to null
+        - The phonetic field MUST use IPA wrapped in slashes, e.g. "/bæd/". Only ONE pronunciation. No brackets, no duplicates, no spaces around the IPA inside the slashes
         - Return ONLY valid JSON, no markdown
         """;
 

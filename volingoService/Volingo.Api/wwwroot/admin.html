@@ -15,6 +15,19 @@
         .container { max-width: 1000px; margin: 0 auto; padding: 24px; }
         h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
         .subtitle { color: #86868b; margin-bottom: 32px; }
+        /* Tabs */
+        .tab-bar {
+            display: flex; gap: 0; margin-bottom: 24px;
+            background: #e5e5ea; border-radius: 10px; padding: 3px;
+        }
+        .tab-btn {
+            flex: 1; padding: 10px 16px; border: none; background: transparent;
+            font-size: 15px; font-weight: 600; cursor: pointer;
+            border-radius: 8px; transition: all 0.15s; color: #666;
+        }
+        .tab-btn.active { background: #fff; color: #1d1d1f; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
         .card {
             background: #fff;
             border-radius: 12px;
@@ -56,6 +69,8 @@
         .btn-danger:hover:not(:disabled) { background: #d63027; }
         .btn-analyze { background: #8b5cf6; color: #fff; }
         .btn-analyze:hover:not(:disabled) { background: #7c3aed; }
+        .btn-orange { background: #ff9500; color: #fff; }
+        .btn-orange:hover:not(:disabled) { background: #e68600; }
         .btn-sm { padding: 6px 12px; font-size: 13px; }
         .preview-box {
             background: #fafafa; border: 1px solid #e5e5ea; border-radius: 8px;
@@ -152,12 +167,47 @@
             border-bottom: 2px solid #e5e5ea; font-size: 12px; font-weight: 600;
         }
         .glossary-table td { padding: 4px 8px; border-bottom: 1px solid #f0f0f0; }
+        /* Question generation */
+        .batch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+        .batch-card {
+            border: 2px solid #e5e5ea; border-radius: 10px; padding: 14px;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .batch-card:hover { border-color: #007aff; background: #f0f7ff; }
+        .batch-card.selected { border-color: #007aff; background: #e8f4fd; }
+        .batch-card.done { border-color: #34c759; background: #e8fae8; }
+        .batch-card h4 { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+        .batch-card p { font-size: 12px; color: #86868b; margin: 0; }
+        .batch-card .batch-count { font-size: 11px; color: #007aff; font-weight: 600; margin-top: 4px; }
+        .question-preview {
+            background: #1d1d1f; color: #f5f5f7; border-radius: 10px;
+            padding: 16px; max-height: 600px; overflow-y: auto;
+            font-family: "SF Mono", Monaco, monospace; font-size: 12px;
+            white-space: pre-wrap; word-break: break-all; margin: 12px 0;
+        }
+        .question-stats {
+            display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0;
+        }
+        .question-stats .stat {
+            background: #f5f5f7; border-radius: 8px; padding: 8px 14px;
+            font-size: 13px; font-weight: 600;
+        }
+        .question-stats .stat .num { font-size: 20px; color: #007aff; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>📚 Volingo 教材管理后台</h1>
-        <p class="subtitle">选择教材 → 上传 PDF → Azure Doc Intelligence 提取 → Cosmos DB 存储 → GPT-4o 智能分析</p>
+        <p class="subtitle">教材导入 · AI 分析 · 智能出题 · 题库管理</p>
+
+        <!-- Tab bar -->
+        <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchTab('import')">📄 教材导入</button>
+            <button class="tab-btn" onclick="switchTab('generate')">🤖 AI 出题</button>
+        </div>
+
+        <!-- ==================== TAB: IMPORT ==================== -->
+        <div class="tab-content active" id="tab-import">
 
         <!-- Step 1: Select textbook -->
         <div class="card">
@@ -221,6 +271,143 @@
                 <p style="color: #86868b; font-size: 14px;">点击刷新查看已入库文档</p>
             </div>
         </div>
+
+        <!-- Analysis Modal -->
+        </div><!-- end tab-import -->
+
+        <!-- ==================== TAB: GENERATE ==================== -->
+        <div class="tab-content" id="tab-generate">
+
+            <!-- Step G1: Select document -->
+            <div class="card">
+                <h2><span class="step">1</span> 选择已分析的教材</h2>
+                <select id="genDocSelect" onchange="onGenDocChange()">
+                    <option value="">— 选择教材文档 —</option>
+                </select>
+                <div id="genDocInfo" style="display:none" class="meta"></div>
+            </div>
+
+            <!-- Step G2: Select unit -->
+            <div class="card" id="genUnitCard" style="display:none">
+                <h2><span class="step">2</span> 选择单元</h2>
+                <select id="genUnitSelect" onchange="onGenUnitChange()">
+                    <option value="">— 选择单元 —</option>
+                </select>
+                <div id="genUnitInfo" style="display:none">
+                    <div class="meta" style="margin-bottom:8px">
+                        <span>📝 词汇: <strong id="genUnitVocab">0</strong> 个</span>
+                        <span>💬 句型: <strong id="genUnitPatterns">0</strong> 条</span>
+                        <span>📐 语法: <strong id="genUnitGrammar">0</strong> 个</span>
+                    </div>
+                    <!-- Unit detail preview: what AI will see -->
+                    <div id="genUnitDetail" style="margin-top:12px;background:#f9f9fb;border:1px solid #e5e5ea;border-radius:10px;padding:16px;font-size:13px;max-height:400px;overflow-y:auto;">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step G3: Select batch & generate -->
+            <div class="card" id="genBatchCard" style="display:none">
+                <h2><span class="step">3</span> 选择出题批次</h2>
+                <p style="font-size:13px;color:#86868b;margin-bottom:12px;">
+                    每个批次生成 2~3 种相关题型。可逐批生成、审核、入库。
+                </p>
+                <div class="batch-grid">
+                    <div class="batch-card" data-batch="0" onclick="selectBatch(0)">
+                        <h4>📝 Batch 1: 词汇基础</h4>
+                        <p>vocabulary + cloze</p>
+                        <div class="batch-count">词汇 ×15 + 填空 ×10 = 25 题</div>
+                    </div>
+                    <div class="batch-card" data-batch="1" onclick="selectBatch(1)">
+                        <h4>📐 Batch 2: 语法选择</h4>
+                        <p>grammar + MCQ + errorCorrection</p>
+                        <div class="batch-count">语法 ×8 + 选择 ×10 + 纠错 ×5 = 23 题</div>
+                    </div>
+                    <div class="batch-card" data-batch="2" onclick="selectBatch(2)">
+                        <h4>✍️ Batch 3: 产出型</h4>
+                        <p>translation + rewriting + ordering</p>
+                        <div class="batch-count">翻译 ×6 + 改写 ×5 + 排序 ×5 = 16 题</div>
+                    </div>
+                    <div class="batch-card" data-batch="3" onclick="selectBatch(3)">
+                        <h4>📖 Batch 4: 篇章型</h4>
+                        <p>reading + writing</p>
+                        <div class="batch-count">阅读 ×3 篇 + 写作 ×3 = 6 题</div>
+                    </div>
+                    <div class="batch-card" data-batch="4" onclick="selectBatch(4)">
+                        <h4>🎧 Batch 5: 听说型</h4>
+                        <p>listening + speaking</p>
+                        <div class="batch-count">听力 ×6 + 口语 ×6 = 12 题</div>
+                    </div>
+                </div>
+                <button class="btn btn-orange" id="generateBtn" onclick="generateQuestions()" disabled>
+                    🤖 生成题目
+                </button>
+                <div class="status" id="genStatus"></div>
+            </div>
+
+            <!-- Full-book generation -->
+            <div class="card" id="genFullBookCard" style="display:none">
+                <h2>📚 整书一键出题</h2>
+                <p style="font-size:13px;color:#86868b;margin-bottom:12px;">
+                    自动遍历所有单元 × 5 个 Batch，逐一调用 GPT-4o 生成。完成后统一展示审核。
+                </p>
+                <div id="fullBookProgress" style="display:none;margin-bottom:12px;">
+                    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+                        <span id="fullBookProgressText">准备中…</span>
+                        <span id="fullBookProgressCount">0/0</span>
+                    </div>
+                    <div style="background:#e5e5ea;border-radius:4px;height:8px;overflow:hidden;">
+                        <div id="fullBookProgressBar" style="background:#007aff;height:100%;width:0%;transition:width 0.3s;border-radius:4px;"></div>
+                    </div>
+                    <div id="fullBookLog" style="margin-top:8px;font-size:12px;color:#86868b;max-height:150px;overflow-y:auto;font-family:monospace;"></div>
+                </div>
+                <div style="display:flex;gap:12px;">
+                    <button class="btn btn-analyze" id="fullBookBtn" onclick="generateFullBook()">
+                        📚 整书出题
+                    </button>
+                    <button class="btn btn-danger btn-sm" id="fullBookCancelBtn" onclick="cancelFullBook()" style="display:none">
+                        ⏹ 停止
+                    </button>
+                </div>
+                <div class="status" id="fullBookStatus"></div>
+            </div>
+
+            <!-- Step G4: Review & commit -->
+            <div class="card" id="genResultCard" style="display:none">
+                <h2><span class="step">4</span> 审核题目 & 确认入库</h2>
+                <div class="question-stats" id="genStats"></div>
+                <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                    <button class="btn btn-sm btn-primary" onclick="toggleJsonView()">
+                        📋 展开/收起 JSON
+                    </button>
+                    <button class="btn btn-sm" id="evalBtn" onclick="evalQuestions()" style="background:#8b5cf6;color:#fff">
+                        🔍 AI 质检
+                    </button>
+                    <button class="btn btn-sm" onclick="toggleAllQuestions(true)" style="background:#34c759;color:#fff">
+                        ✅ 全选
+                    </button>
+                    <button class="btn btn-sm" onclick="toggleAllQuestions(false)" style="background:#ff9500;color:#fff">
+                        ☐ 全不选
+                    </button>
+                </div>
+                <div class="status" id="evalStatus"></div>
+                <div class="question-preview" id="genJsonPreview" style="display:none"></div>
+
+                <!-- Per-question visual cards with checkboxes -->
+                <div id="genQuestionCards" style="margin:12px 0;max-height:500px;overflow-y:auto;"></div>
+
+                <div style="display:flex;gap:12px;margin-top:16px;align-items:center;">
+                    <button class="btn btn-success" id="commitBtn" onclick="commitQuestions()">
+                        ✅ 确认入库题库
+                    </button>
+                    <span id="commitCount" style="font-size:13px;color:#86868b;"></span>
+                    <button class="btn btn-danger" onclick="discardQuestions()">
+                        ❌ 丢弃
+                    </button>
+                </div>
+                <div class="status" id="commitStatus"></div>
+            </div>
+
+        </div><!-- end tab-generate -->
 
         <!-- Analysis Modal -->
         <div class="modal-overlay" id="analysisModal">
@@ -646,6 +833,634 @@
 
         // Init
         init();
+
+        // ============================
+        // Tab switching
+        // ============================
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach((b, i) => {
+                b.classList.toggle('active', (tab === 'import' && i === 0) || (tab === 'generate' && i === 1));
+            });
+            document.getElementById('tab-import').classList.toggle('active', tab === 'import');
+            document.getElementById('tab-generate').classList.toggle('active', tab === 'generate');
+            if (tab === 'generate') loadGenDocList();
+        }
+
+        // ============================
+        // Question Generation
+        // ============================
+        let genDocs = [];          // analyzed documents
+        let genSelectedDoc = null; // currently selected doc full object
+        let genSelectedUnit = null;
+        let genSelectedBatch = null;
+        let genPendingQuestions = []; // questions waiting for commit
+
+        const BATCH_NAMES = [
+            'VocabCloze', 'GrammarMcqError', 'TransRewriteOrder',
+            'ReadingWriting', 'ListeningSpeaking'
+        ];
+
+        async function loadGenDocList() {
+            const sel = document.getElementById('genDocSelect');
+            sel.innerHTML = '<option value="">— 加载中… —</option>';
+            try {
+                const resp = await fetch(`${API}/documents`);
+                const docs = await resp.json();
+                genDocs = docs.filter(d => d.hasAnalysis);
+                sel.innerHTML = '<option value="">— 选择教材文档 —</option>';
+                genDocs.forEach(d => {
+                    const opt = document.createElement('option');
+                    opt.value = d.id;
+                    opt.textContent = `${d.displayName || d.id}`;
+                    opt.dataset.textbook = d.textbook;
+                    sel.appendChild(opt);
+                });
+            } catch (e) {
+                sel.innerHTML = '<option value="">加载失败</option>';
+            }
+        }
+
+        async function onGenDocChange() {
+            const sel = document.getElementById('genDocSelect');
+            const docId = sel.value;
+            const info = document.getElementById('genDocInfo');
+            const unitCard = document.getElementById('genUnitCard');
+            const batchCard = document.getElementById('genBatchCard');
+            const resultCard = document.getElementById('genResultCard');
+
+            unitCard.style.display = 'none';
+            batchCard.style.display = 'none';
+            resultCard.style.display = 'none';
+            document.getElementById('genFullBookCard').style.display = 'none';
+            genSelectedDoc = null;
+            genSelectedUnit = null;
+            genSelectedBatch = null;
+            genPendingQuestions = [];
+
+            if (!docId) { info.style.display = 'none'; return; }
+
+            const docMeta = genDocs.find(d => d.id === docId);
+            info.style.display = 'flex';
+            info.innerHTML = `<span>📝 ID: <strong>${docId}</strong></span>
+                              <span>📖 ${docMeta?.displayName || docId}</span>`;
+
+            // Fetch full document with analysis
+            try {
+                const resp = await fetch(`${API}/documents/${docId}/analysis?textbook=${encodeURIComponent(docMeta.textbook)}`);
+                const data = await resp.json();
+                if (!data.hasAnalysis) {
+                    info.innerHTML += '<span style="color:#ff3b30">❌ 未分析</span>';
+                    return;
+                }
+                genSelectedDoc = { id: docId, textbook: docMeta.textbook, displayName: data.displayName, analysis: data.analysis };
+
+                // Populate unit selector
+                const unitSel = document.getElementById('genUnitSelect');
+                unitSel.innerHTML = '<option value="">— 选择单元 —</option>';
+                data.analysis.units.forEach(u => {
+                    const opt = document.createElement('option');
+                    opt.value = u.unitNumber;
+                    opt.textContent = `${u.unitNumber === 0 ? 'Starter' : 'Unit ' + u.unitNumber}: ${u.unitTitle || ''} (词汇${u.vocabulary?.length || 0})`;
+                    unitSel.appendChild(opt);
+                });
+                unitCard.style.display = 'block';
+
+                // Show full-book card
+                document.getElementById('genFullBookCard').style.display = 'block';
+            } catch (e) {
+                info.innerHTML += `<span style="color:#ff3b30">加载失败: ${e.message}</span>`;
+            }
+        }
+
+        function onGenUnitChange() {
+            const unitNum = parseInt(document.getElementById('genUnitSelect').value);
+            const unitInfo = document.getElementById('genUnitInfo');
+            const batchCard = document.getElementById('genBatchCard');
+            const resultCard = document.getElementById('genResultCard');
+            resultCard.style.display = 'none';
+            genPendingQuestions = [];
+
+            if (isNaN(unitNum) || !genSelectedDoc) {
+                unitInfo.style.display = 'none';
+                batchCard.style.display = 'none';
+                return;
+            }
+
+            const unit = genSelectedDoc.analysis.units.find(u => u.unitNumber === unitNum);
+            genSelectedUnit = unit;
+
+            document.getElementById('genUnitVocab').textContent = unit.vocabulary?.length || 0;
+            document.getElementById('genUnitPatterns').textContent = unit.sentencePatterns?.length || 0;
+            document.getElementById('genUnitGrammar').textContent = unit.grammar?.length || 0;
+            unitInfo.style.display = 'block';
+
+            // Render unit detail (what AI will see)
+            renderUnitDetail(unit);
+
+            // Reset batch selection
+            document.querySelectorAll('.batch-card').forEach(c => c.classList.remove('selected', 'done'));
+            genSelectedBatch = null;
+            document.getElementById('generateBtn').disabled = true;
+            batchCard.style.display = 'block';
+        }
+
+        function renderUnitDetail(unit) {
+            const el = document.getElementById('genUnitDetail');
+            let html = `<div style="font-weight:700;font-size:14px;margin-bottom:8px;color:#007aff">
+                📋 AI 将看到的单元素材（用于出题）</div>`;
+
+            if (unit.topic) {
+                html += `<div style="margin-bottom:8px"><strong>主题:</strong> ${unit.topic}</div>`;
+            }
+
+            // Vocabulary
+            if (unit.vocabulary?.length) {
+                html += `<div style="margin-bottom:10px"><strong>📝 词汇 (${unit.vocabulary.length}):</strong><div class="tag-list" style="margin-top:4px">`;
+                unit.vocabulary.forEach(v => {
+                    html += `<span class="tag vocab">${v.word} <small>${v.meaning}</small>${v.type ? ' <small style="color:#999">[' + v.type + ']</small>' : ''}</span>`;
+                });
+                html += `</div></div>`;
+            }
+
+            // Sentence patterns
+            if (unit.sentencePatterns?.length) {
+                html += `<div style="margin-bottom:10px"><strong>💬 句型:</strong>`;
+                unit.sentencePatterns.forEach(s => {
+                    html += `<div style="padding:2px 0;font-size:13px"><code style="background:#eef;padding:2px 6px;border-radius:4px">${s.pattern || s}</code>`;
+                    if (s.usage) html += ` <span style="color:#86868b">— ${s.usage}</span>`;
+                    html += `</div>`;
+                });
+                html += `</div>`;
+            }
+
+            // Grammar
+            if (unit.grammar?.length) {
+                html += `<div style="margin-bottom:10px"><strong>📐 语法:</strong><div class="tag-list" style="margin-top:4px">`;
+                unit.grammar.forEach(g => {
+                    html += `<span class="tag grammar">${g}</span>`;
+                });
+                html += `</div></div>`;
+            }
+
+            // Commands
+            if (unit.commands?.length) {
+                html += `<div style="margin-bottom:10px"><strong>🎯 指令:</strong><div class="tag-list" style="margin-top:4px">`;
+                unit.commands.forEach(c => {
+                    html += `<span class="tag command">${c}</span>`;
+                });
+                html += `</div></div>`;
+            }
+
+            // Songs
+            if (unit.songs?.length) {
+                html += `<div style="margin-bottom:10px"><strong>🎵 歌曲:</strong><div class="tag-list" style="margin-top:4px">`;
+                unit.songs.forEach(s => {
+                    html += `<span class="tag song">${s.title}${s.firstLine ? ' — "' + s.firstLine + '"' : ''}</span>`;
+                });
+                html += `</div></div>`;
+            }
+
+            // Story
+            if (unit.storySummary) {
+                html += `<div style="margin-bottom:10px"><strong>📖 故事:</strong>
+                    <div style="background:#fff;padding:8px;border-radius:6px;margin-top:4px">
+                        ${unit.storyTitle ? '<strong>' + unit.storyTitle + '</strong><br>' : ''}${unit.storySummary}
+                    </div></div>`;
+            }
+
+            // Also show glossary count
+            const glossaryCount = genSelectedDoc.analysis.vocabularyGlossary?.length || 0;
+            html += `<div style="border-top:1px solid #e5e5ea;padding-top:8px;margin-top:8px;color:#86868b">
+                📘 全书词汇表: ${glossaryCount} 词（用于生成干扰项）</div>`;
+
+            el.innerHTML = html;
+        }
+
+        function selectBatch(batchIdx) {
+            genSelectedBatch = batchIdx;
+            document.querySelectorAll('.batch-card').forEach((c, i) => {
+                c.classList.toggle('selected', i === batchIdx && !c.classList.contains('done'));
+            });
+            document.getElementById('generateBtn').disabled = false;
+        }
+
+        async function generateQuestions() {
+            if (genSelectedBatch === null || !genSelectedDoc || !genSelectedUnit) return;
+
+            const btn = document.getElementById('generateBtn');
+            const status = document.getElementById('genStatus');
+            const resultCard = document.getElementById('genResultCard');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> AI 出题中（约 30~60 秒）…';
+            status.className = 'status loading';
+            status.textContent = `正在为 Unit ${genSelectedUnit.unitNumber} 的 Batch ${genSelectedBatch + 1} 生成题目…`;
+
+            try {
+                const resp = await fetch(`${API}/generate-questions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        docId: genSelectedDoc.id,
+                        textbook: genSelectedDoc.textbook,
+                        unitNumber: genSelectedUnit.unitNumber,
+                        batch: genSelectedBatch
+                    })
+                });
+
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.detail || '生成失败');
+                }
+
+                const data = await resp.json();
+                genPendingQuestions = data.questions;
+
+                // Reset commit UI for the new batch
+                document.getElementById('commitBtn').disabled = false;
+                document.getElementById('commitBtn').innerHTML = '✅ 确认入库题库';
+                document.getElementById('commitStatus').textContent = '';
+                document.getElementById('commitStatus').className = 'status';
+
+                // Mark batch as done
+                document.querySelector(`.batch-card[data-batch="${genSelectedBatch}"]`).classList.add('done');
+                document.querySelector(`.batch-card[data-batch="${genSelectedBatch}"]`).classList.remove('selected');
+
+                status.className = 'status success';
+                status.textContent = `✅ 生成完成！共 ${data.count} 道题。请审核后确认入库。`;
+
+                // Show results
+                showGeneratedQuestions(data.questions);
+                resultCard.style.display = 'block';
+            } catch (e) {
+                status.className = 'status error';
+                status.textContent = `❌ ${e.message}`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🤖 生成题目';
+            }
+        }
+
+        function showGeneratedQuestions(questions) {
+            // Stats
+            const typeCount = {};
+            questions.forEach(q => {
+                const t = q.questionType || 'unknown';
+                typeCount[t] = (typeCount[t] || 0) + 1;
+            });
+            const statsHtml = Object.entries(typeCount).map(([type, count]) =>
+                `<div class="stat"><div class="num">${count}</div>${type}</div>`
+            ).join('');
+            document.getElementById('genStats').innerHTML = statsHtml;
+
+            // JSON preview
+            document.getElementById('genJsonPreview').textContent = JSON.stringify(questions, null, 2);
+
+            // Visual question cards
+            let cardsHtml = '';
+            questions.forEach((q, i) => {
+                cardsHtml += renderQuestionCard(q, i);
+            });
+            document.getElementById('genQuestionCards').innerHTML = cardsHtml;
+            updateCommitCount();
+            // Reset eval status
+            document.getElementById('evalStatus').textContent = '';
+            document.getElementById('evalStatus').className = 'status';
+        }
+
+        function renderQuestionCard(q, idx) {
+            const type = q.questionType || 'unknown';
+            const typeColors = {
+                vocabulary: '#ff9500', cloze: '#007aff', grammar: '#8b5cf6',
+                multipleChoice: '#34c759', errorCorrection: '#ff3b30',
+                translation: '#ff9500', rewriting: '#007aff', sentenceOrdering: '#8b5cf6',
+                reading: '#34c759', writing: '#ff3b30',
+                listening: '#007aff', speaking: '#ff9500'
+            };
+            const color = typeColors[type] || '#86868b';
+
+            let body = '';
+            if (q.stem) body += `<div style="font-weight:600;margin-bottom:4px">${q.stem}</div>`;
+            if (q.translation) body += `<div style="color:#86868b;font-size:13px;margin-bottom:6px">${q.translation}</div>`;
+            if (q.stemTranslation) body += `<div style="color:#86868b;font-size:13px;margin-bottom:6px">${q.stemTranslation}</div>`;
+            if (q.sentence) body += `<div style="font-weight:600;margin-bottom:4px">${q.sentence}</div>`;
+            if (q.word) body += `<div style="font-weight:600;margin-bottom:4px">${q.word} ${q.phonetic || ''} — ${q.meaning || ''}</div>`;
+            if (q.prompt) body += `<div style="font-weight:600;margin-bottom:4px">${q.prompt}</div>`;
+            if (q.sourceText) body += `<div style="font-weight:600;margin-bottom:4px">${q.sourceText}</div>`;
+            if (q.originalSentence) body += `<div style="font-weight:600;margin-bottom:4px">${q.originalSentence}</div>`;
+            if (q.content) body += `<div style="background:#f9f9f9;padding:8px;border-radius:6px;font-size:13px;margin-bottom:6px">${q.content?.substring(0, 200)}…</div>`;
+            if (q.transcript) body += `<div style="font-style:italic;font-size:13px;margin-bottom:6px">🎧 ${q.transcript}</div>`;
+
+            // Options
+            if (q.options && Array.isArray(q.options)) {
+                body += '<div style="margin:6px 0">';
+                q.options.forEach((opt, oi) => {
+                    const isCorrect = oi === q.correctIndex;
+                    body += `<div style="padding:3px 0;font-size:13px;${isCorrect ? 'color:#34c759;font-weight:700' : ''}">${String.fromCharCode(65 + oi)}. ${opt} ${isCorrect ? '✓' : ''}</div>`;
+                });
+                body += '</div>';
+            }
+
+            // Answer
+            if (q.answer) body += `<div style="font-size:13px;color:#34c759">答案: ${q.answer}</div>`;
+            if (q.referenceAnswer) body += `<div style="font-size:13px;color:#34c759">参考: ${q.referenceAnswer}</div>`;
+            if (q.referenceText) body += `<div style="font-size:13px;color:#34c759">参考: ${q.referenceText}</div>`;
+            if (q.correction) body += `<div style="font-size:13px;color:#34c759">改正: ${q.errorRange} → ${q.correction}</div>`;
+            if (q.correctSentence) body += `<div style="font-size:13px;color:#34c759">正确: ${q.correctSentence}</div>`;
+
+            // Explanation
+            if (q.explanation) body += `<div style="font-size:12px;color:#86868b;margin-top:4px;border-top:1px solid #f0f0f0;padding-top:4px">💡 ${q.explanation}</div>`;
+            if (q.explanationTranslation) body += `<div style="font-size:12px;color:#86868b">${q.explanationTranslation}</div>`;
+
+            // Sub-questions (reading)
+            if (q.subQuestions && Array.isArray(q.subQuestions)) {
+                q.subQuestions.forEach((sq, si) => {
+                    body += `<div style="margin-top:8px;padding:8px;background:#f9f9f9;border-radius:6px;font-size:13px">`;
+                    body += `<div style="font-weight:600">Q${si + 1}: ${sq.stem || ''}</div>`;
+                    if (sq.options) {
+                        sq.options.forEach((opt, oi) => {
+                            const isC = oi === sq.correctIndex;
+                            body += `<div style="${isC ? 'color:#34c759;font-weight:700' : ''}">${String.fromCharCode(65 + oi)}. ${opt} ${isC ? '✓' : ''}</div>`;
+                        });
+                    }
+                    body += `</div>`;
+                });
+            }
+
+            return `<div id="qcard-${idx}" style="border:1px solid #e5e5ea;border-radius:10px;padding:14px;margin-bottom:10px;border-left:4px solid ${color};opacity:1;transition:opacity 0.2s">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                        <input type="checkbox" class="q-checkbox" data-idx="${idx}" checked onchange="onQuestionToggle()" style="width:16px;height:16px">
+                        <span style="font-size:12px;font-weight:700;color:${color};text-transform:uppercase">#${idx + 1} ${type}${q.category ? ' · ' + q.category : ''}</span>
+                    </label>
+                    <span style="font-size:11px;color:#86868b" id="qeval-${idx}">${q.level || ''}</span>
+                </div>
+                ${body}
+            </div>`;
+        }
+
+        function toggleJsonView() {
+            const el = document.getElementById('genJsonPreview');
+            el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }
+
+        // ── Eval (AI 质检) ──
+        async function evalQuestions() {
+            if (!genPendingQuestions.length) return;
+
+            const btn = document.getElementById('evalBtn');
+            const status = document.getElementById('evalStatus');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> AI 质检中…';
+            status.className = 'status loading';
+            status.textContent = `正在对 ${genPendingQuestions.length} 道题目进行质检…`;
+
+            try {
+                const resp = await fetch(`${API}/eval-questions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ questions: genPendingQuestions })
+                });
+
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.detail || '质检失败');
+                }
+
+                const data = await resp.json();
+                status.className = 'status success';
+                status.textContent = `✅ 质检完成：${data.passed} 通过，${data.failed} 不通过`;
+
+                // Mark each question card
+                data.results.forEach(r => {
+                    const card = document.getElementById(`qcard-${r.index}`);
+                    const evalLabel = document.getElementById(`qeval-${r.index}`);
+                    const checkbox = document.querySelector(`.q-checkbox[data-idx="${r.index}"]`);
+                    if (!card) return;
+
+                    if (r.pass) {
+                        evalLabel.innerHTML = '<span style="color:#34c759;font-weight:700">✅ 通过</span>';
+                    } else {
+                        evalLabel.innerHTML = `<span style="color:#ff3b30;font-weight:700">❌ 不通过</span>`;
+                        // Add issue details
+                        const issueDiv = document.createElement('div');
+                        issueDiv.style.cssText = 'background:#fff5f5;border:1px solid #ff3b30;border-radius:6px;padding:8px;margin-top:6px;font-size:12px;color:#ff3b30';
+                        issueDiv.innerHTML = r.issues.map(i => `• ${i}`).join('<br>');
+                        card.appendChild(issueDiv);
+                        // Uncheck failed questions
+                        if (checkbox) {
+                            checkbox.checked = false;
+                            card.style.opacity = '0.5';
+                        }
+                    }
+                });
+                updateCommitCount();
+            } catch (e) {
+                status.className = 'status error';
+                status.textContent = `❌ ${e.message}`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🔍 AI 质检';
+            }
+        }
+
+        // ── Checkbox controls ──
+        function onQuestionToggle() {
+            document.querySelectorAll('.q-checkbox').forEach(cb => {
+                const card = document.getElementById(`qcard-${cb.dataset.idx}`);
+                if (card) card.style.opacity = cb.checked ? '1' : '0.5';
+            });
+            updateCommitCount();
+        }
+
+        function toggleAllQuestions(checked) {
+            document.querySelectorAll('.q-checkbox').forEach(cb => {
+                cb.checked = checked;
+                const card = document.getElementById(`qcard-${cb.dataset.idx}`);
+                if (card) card.style.opacity = checked ? '1' : '0.5';
+            });
+            updateCommitCount();
+        }
+
+        function updateCommitCount() {
+            const checked = document.querySelectorAll('.q-checkbox:checked').length;
+            const total = document.querySelectorAll('.q-checkbox').length;
+            document.getElementById('commitCount').textContent = `已选 ${checked}/${total} 道`;
+        }
+
+        // ── Commit (only checked questions) ──
+        async function commitQuestions() {
+            const checkedIdxs = new Set();
+            document.querySelectorAll('.q-checkbox:checked').forEach(cb => {
+                checkedIdxs.add(parseInt(cb.dataset.idx));
+            });
+            const selected = genPendingQuestions.filter((_, i) => checkedIdxs.has(i));
+            if (!selected.length) {
+                alert('没有选中任何题目');
+                return;
+            }
+            if (!confirm(`确认将 ${selected.length} 道题目入库？`)) return;
+
+            const btn = document.getElementById('commitBtn');
+            const status = document.getElementById('commitStatus');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 入库中…';
+
+            try {
+                const resp = await fetch(`${API}/commit-questions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ questions: selected })
+                });
+
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.detail || '入库失败');
+                }
+
+                const data = await resp.json();
+                status.className = 'status success';
+                status.textContent = `✅ 入库成功！共写入 ${data.committed}/${data.total} 道题目到 questions 容器。`;
+
+                if (data.errors?.length) {
+                    status.textContent += ` ⚠️ ${data.errors.length} 个错误。`;
+                }
+
+                genPendingQuestions = [];
+                btn.disabled = true;
+                btn.innerHTML = '✅ 已入库';
+            } catch (e) {
+                status.className = 'status error';
+                status.textContent = `❌ ${e.message}`;
+                btn.disabled = false;
+                btn.innerHTML = '✅ 确认入库题库';
+            }
+        }
+
+        function discardQuestions() {
+            if (!confirm('确认丢弃当前生成的题目？')) return;
+            genPendingQuestions = [];
+            document.getElementById('genResultCard').style.display = 'none';
+            document.getElementById('genStatus').className = 'status';
+        }
+
+        // ===== Full-book generation =====
+        let fullBookCancelled = false;
+        const BATCH_LABELS = { VocabCloze: '词汇填空', GrammarMcqError: '语法选择/纠错', TransRewriteOrder: '翻译/改写/排序', ReadingWriting: '阅读/写作', ListeningSpeaking: '听力/口语' };
+
+        function fullBookLog(msg) {
+            const log = document.getElementById('fullBookLog');
+            const line = document.createElement('div');
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            log.appendChild(line);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        async function generateFullBook() {
+            if (!genSelectedDoc) return;
+            const units = genSelectedDoc.analysis.units;
+            if (!units?.length) { alert('无单元数据'); return; }
+
+            fullBookCancelled = false;
+            const totalSteps = units.length * BATCH_NAMES.length;
+            let completed = 0;
+            let allQuestions = [];
+            let errors = [];
+
+            // UI setup
+            const progressBar = document.getElementById('fullBookProgressBar');
+            const progressText = document.getElementById('fullBookProgressText');
+            const progressCount = document.getElementById('fullBookProgressCount');
+            const statusEl = document.getElementById('fullBookStatus');
+            const log = document.getElementById('fullBookLog');
+            log.innerHTML = '';
+            progressBar.style.width = '0%';
+            progressText.textContent = '0%';
+            progressCount.textContent = `0/${totalSteps}`;
+            statusEl.className = 'status';
+            statusEl.textContent = '';
+            document.getElementById('fullBookStartBtn').disabled = true;
+            document.getElementById('fullBookCancelBtn').style.display = 'inline-block';
+
+            fullBookLog(`开始整书出题：${genSelectedDoc.displayName}，共 ${units.length} 个单元 × ${BATCH_NAMES.length} 批次 = ${totalSteps} 步`);
+
+            for (const unit of units) {
+                if (fullBookCancelled) break;
+
+                for (const batch of BATCH_NAMES) {
+                    if (fullBookCancelled) break;
+
+                    const label = BATCH_LABELS[batch] || batch;
+                    fullBookLog(`▶ Unit ${unit.unitNumber} (${unit.unitTitle || ''}) — ${label}…`);
+
+                    try {
+                        const resp = await fetch(`${API}/generate-questions`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                docId: genSelectedDoc.id,
+                                textbook: genSelectedDoc.textbook,
+                                unitNumber: unit.unitNumber,
+                                batch: batch
+                            })
+                        });
+
+                        if (!resp.ok) {
+                            const err = await resp.json();
+                            throw new Error(err.detail || `HTTP ${resp.status}`);
+                        }
+
+                        const data = await resp.json();
+                        const qs = data.questions || [];
+                        allQuestions.push(...qs);
+                        fullBookLog(`  ✅ 生成 ${qs.length} 道 (累计 ${allQuestions.length})`);
+                    } catch (e) {
+                        errors.push({ unit: unit.unitNumber, batch, error: e.message });
+                        fullBookLog(`  ❌ 失败: ${e.message}`);
+                    }
+
+                    completed++;
+                    const pct = Math.round(completed / totalSteps * 100);
+                    progressBar.style.width = pct + '%';
+                    progressText.textContent = pct + '%';
+                    progressCount.textContent = `${completed}/${totalSteps}`;
+                }
+            }
+
+            // Finished
+            document.getElementById('fullBookStartBtn').disabled = false;
+            document.getElementById('fullBookCancelBtn').style.display = 'none';
+
+            if (fullBookCancelled) {
+                fullBookLog(`⏹ 已停止。已生成 ${allQuestions.length} 道题目。`);
+                statusEl.className = 'status error';
+                statusEl.textContent = `已停止，当前 ${allQuestions.length} 道题目已收集。`;
+            } else {
+                fullBookLog(`🎉 整书出题完成！共 ${allQuestions.length} 道，${errors.length} 个错误。`);
+                statusEl.className = 'status success';
+                statusEl.textContent = `✅ 完成！共 ${allQuestions.length} 道题目，${errors.length} 个错误。`;
+            }
+
+            // Show collected questions in review panel
+            if (allQuestions.length) {
+                genPendingQuestions = allQuestions;
+                const resultCard = document.getElementById('genResultCard');
+                resultCard.style.display = 'block';
+                document.getElementById('genResultCount').textContent = allQuestions.length;
+                const container = document.getElementById('genQuestionCards');
+                container.innerHTML = '';
+                allQuestions.forEach((q, i) => container.appendChild(renderQuestionCard(q, i)));
+                document.getElementById('genJsonPreview').textContent = JSON.stringify(allQuestions, null, 2);
+                resultCard.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        function cancelFullBook() {
+            fullBookCancelled = true;
+            fullBookLog('⏹ 正在停止…');
+        }
     </script>
 </body>
 </html>

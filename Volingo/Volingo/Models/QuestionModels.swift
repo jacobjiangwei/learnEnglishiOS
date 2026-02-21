@@ -33,7 +33,7 @@ struct ClozeQuestion: PracticeQuestion {
     let type: QuestionType = .cloze
     let sentence: String        // 含空格的句子，用 ___ 标记空白
     let answer: String          // 正确答案
-    let hint: String?           // 提示
+    let hints: [String]         // 候选词列表（含正确答案和干扰项）
     let explanation: String
 }
 

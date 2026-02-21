@@ -16,7 +16,7 @@ struct ClozePracticeView: View {
     @State private var submitted = false
     @State private var correctCount = 0
     @State private var showResult = false
-    @State private var showHint = false
+    @State private var showHints = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -35,15 +35,29 @@ struct ClozePracticeView: View {
                         Text(question.sentence)
                             .font(.title3.bold())
 
-                        if let hint = question.hint {
-                            if showHint {
-                                Text("💡 提示：\(hint)")
-                                    .font(.subheadline)
-                                    .foregroundColor(.blue)
-                                    .transition(.opacity)
+                        // Hints: show all words as reference when requested
+                        if !question.hints.isEmpty {
+                            if showHints {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("💡 可选词汇：")
+                                        .font(.subheadline)
+                                        .foregroundColor(.blue)
+                                    FlowLayout(spacing: 8) {
+                                        ForEach(question.hints, id: \.self) { word in
+                                            Text(word)
+                                                .font(.body.bold())
+                                                .padding(.horizontal, 12)
+                                                .padding(.vertical, 6)
+                                                .background(Color.blue.opacity(0.1))
+                                                .foregroundColor(.blue)
+                                                .cornerRadius(16)
+                                        }
+                                    }
+                                }
+                                .transition(.opacity)
                             } else if !submitted {
                                 Button {
-                                    withAnimation { showHint = true }
+                                    withAnimation { showHints = true }
                                 } label: {
                                     Label("显示提示", systemImage: "lightbulb")
                                         .font(.subheadline)
@@ -109,7 +123,7 @@ struct ClozePracticeView: View {
             currentIndex += 1
             userAnswer = ""
             submitted = false
-            showHint = false
+            showHints = false
         } else {
             showResult = true
         }
@@ -130,7 +144,7 @@ struct ClozePracticeView: View {
 #Preview {
     NavigationView {
         ClozePracticeView(questions: [
-            ClozeQuestion(id: "preview-1", sentence: "I have ___ finished my homework.", answer: "already", hint: "已经", explanation: "already 用于肯定句。"),
+            ClozeQuestion(id: "preview-1", sentence: "I have ___ finished my homework.", answer: "already", hints: ["already", "yet", "still", "never"], explanation: "already 用于肯定句。"),
         ])
     }
 }
