@@ -24,7 +24,6 @@ enum QuestionType: String, Codable, CaseIterable, Identifiable {
     // 能力类
     case listening          = "听力专项"
     case speaking           = "口语专项"
-    case writing            = "写作专项"
     case vocabulary         = "词汇专项"
     case grammar            = "语法专项"
     
@@ -54,7 +53,6 @@ enum QuestionType: String, Codable, CaseIterable, Identifiable {
         case .sentenceOrdering:  return "sentenceOrdering"
         case .listening:         return "listening"
         case .speaking:          return "speaking"
-        case .writing:           return "writing"
         case .vocabulary:        return "vocabulary"
         case .grammar:           return "grammar"
         case .scenarioDaily:     return "scenarioDaily"
@@ -79,7 +77,7 @@ enum QuestionType: String, Codable, CaseIterable, Identifiable {
         case .multipleChoice, .cloze, .reading, .translation,
              .rewriting, .errorCorrection, .sentenceOrdering:
             return .questionType
-        case .listening, .speaking, .writing, .vocabulary, .grammar:
+        case .listening, .speaking, .vocabulary, .grammar:
             return .skill
         case .scenarioDaily, .scenarioCampus, .scenarioWorkplace, .scenarioTravel:
             return .scenario
@@ -100,7 +98,6 @@ enum QuestionType: String, Codable, CaseIterable, Identifiable {
         case .sentenceOrdering:  return "arrow.up.arrow.down"
         case .listening:         return "headphones"
         case .speaking:          return "mic.fill"
-        case .writing:           return "pencil.line"
         case .vocabulary:        return "textformat.abc"
         case .grammar:           return "text.book.closed"
         case .scenarioDaily:     return "cup.and.saucer.fill"
@@ -136,7 +133,6 @@ enum QuestionType: String, Codable, CaseIterable, Identifiable {
         case .sentenceOrdering:  return "句子/段落排序"
         case .listening:         return "对话/独白/笔记"
         case .speaking:          return "朗读/翻译说/跟读"
-        case .writing:           return "写句/写段/应用文"
         case .vocabulary:        return "背词/辨析/词形"
         case .grammar:           return "时态/从句/非谓语"
         case .scenarioDaily:     return "点餐/问路/购物"

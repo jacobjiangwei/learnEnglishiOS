@@ -47,9 +47,8 @@ struct ReadingPassage: Identifiable {
     let questions: [ReadingQuestion]
 }
 
-struct ReadingQuestion: PracticeQuestion {
-    let id: String
-    let type: QuestionType = .reading
+struct ReadingQuestion: Identifiable {
+    let id: Int          // 子题序号，从 0 开始
     let stem: String
     let options: [String]
     let correctIndex: Int
@@ -159,24 +158,6 @@ enum SpeakingCategory: String {
         case .completeSpeak:  return "text.badge.plus"
         }
     }
-}
-
-// MARK: - 写作题模型
-
-struct WritingQuestion: PracticeQuestion {
-    let id: String
-    let type: QuestionType = .writing
-    let prompt: String              // 写作要求
-    let category: WritingCategory
-    let wordLimit: ClosedRange<Int> // 字数范围
-    let referenceAnswer: String     // 参考范文
-}
-
-enum WritingCategory: String {
-    case sentence    = "写句子"
-    case paragraph   = "写段落"
-    case essay       = "写短文"
-    case application = "应用文"
 }
 
 // MARK: - 词汇题模型

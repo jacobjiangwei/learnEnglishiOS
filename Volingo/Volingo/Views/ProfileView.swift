@@ -230,7 +230,7 @@ struct ProfileView: View {
         let practiceTypes: [QuestionType] = [
             .multipleChoice, .cloze, .reading, .translation, .rewriting,
             .errorCorrection, .sentenceOrdering, .listening, .speaking,
-            .writing, .vocabulary, .grammar
+            .vocabulary, .grammar
         ]
         let existing = statsVM.stats?.questionTypeStats ?? []
         let lookup = Dictionary(uniqueKeysWithValues: existing.map { ($0.questionType, $0) })

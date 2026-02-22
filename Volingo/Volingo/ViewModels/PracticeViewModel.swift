@@ -30,7 +30,6 @@ class PracticeViewModel: ObservableObject {
     @Published var readingPassage: LoadingState<ReadingPassage> = .idle
     @Published var translationItems: LoadingState<[TextInputItem]> = .idle
     @Published var rewritingItems: LoadingState<[TextInputItem]> = .idle
-    @Published var writingItems: LoadingState<[TextInputItem]> = .idle
     @Published var errorCorrectionQuestions: LoadingState<[ErrorCorrectionQuestion]> = .idle
     @Published var orderingQuestions: LoadingState<[OrderingQuestion]> = .idle
     @Published var listeningQuestions: LoadingState<[ListeningQuestion]> = .idle
@@ -83,8 +82,6 @@ class PracticeViewModel: ObservableObject {
             await loadListening(textbookCode: textbookCode)
         case .speaking:
             await loadSpeaking(textbookCode: textbookCode)
-        case .writing:
-            await loadWriting(textbookCode: textbookCode)
         case .vocabulary:
             await loadVocabulary(textbookCode: textbookCode)
         case .grammar:
@@ -108,6 +105,7 @@ class PracticeViewModel: ObservableObject {
         let results = questionIds.map { SubmitResultItem(questionId: $0.id, isCorrect: $0.isCorrect, questionType: currentQuestionType) }
         do {
             try await api.submitResults(results)
+            questionIds.removeAll()
             NotificationCenter.default.post(name: .practiceResultsSubmitted, object: nil)
         } catch {
             print("提交答案失败: \(error)")
@@ -157,8 +155,6 @@ class PracticeViewModel: ObservableObject {
             decodeAndLoadListening(decoder: decoder, data: data)
         case .speaking:
             decodeAndLoadSpeaking(decoder: decoder, data: data)
-        case .writing:
-            decodeAndLoadWriting(decoder: decoder, data: data)
         case .vocabulary:
             decodeAndLoadVocabulary(decoder: decoder, data: data)
         case .grammar:
@@ -204,8 +200,8 @@ class PracticeViewModel: ObservableObject {
                 readingPassage = .error("无阅读题数据")
                 return
             }
-            let questions = first.questions.map { q in
-                ReadingQuestion(id: q.id, stem: q.stem, options: q.options,
+            let questions = first.questions.enumerated().map { (i, q) in
+                ReadingQuestion(id: i, stem: q.stem, options: q.options,
                                 correctIndex: q.correctIndex, explanation: q.explanation ?? "")
             }
             readingPassage = .loaded(ReadingPassage(
@@ -305,25 +301,6 @@ class PracticeViewModel: ObservableObject {
             speakingQuestions = .loaded(questions)
         } catch {
             speakingQuestions = .error("历史数据解码失败")
-        }
-    }
-
-    private func decodeAndLoadWriting(decoder: JSONDecoder, data: Data) {
-        do {
-            let resp = try decoder.decode(QuestionsResponse<[APIWritingQuestion]>.self, from: data)
-            let items = resp.questions.map { q in
-                TextInputItem(
-                    id: q.id, sourceText: q.prompt,
-                    sourceTranslation: nil,
-                    instruction: "字数要求：\(q.wordLimit.min)-\(q.wordLimit.max) 词",
-                    instructionTranslation: nil,
-                    referenceAnswer: q.referenceAnswer, keywords: [],
-                    explanation: "参考范文已展示。请对照学习。", isSelfEvaluated: true
-                )
-            }
-            writingItems = .loaded(items)
-        } catch {
-            writingItems = .error("历史数据解码失败")
         }
     }
 
@@ -439,9 +416,9 @@ class PracticeViewModel: ObservableObject {
             }
             lastRawJSON = rawData
             lastQuestionCount = first.questions.count
-            let questions = first.questions.map { q in
+            let questions = first.questions.enumerated().map { (i, q) in
                 ReadingQuestion(
-                    id: q.id,
+                    id: i,
                     stem: q.stem,
                     options: q.options,
                     correctIndex: q.correctIndex,
@@ -507,31 +484,6 @@ class PracticeViewModel: ObservableObject {
             rewritingItems = .loaded(items)
         } catch {
             rewritingItems = .error(error.localizedDescription)
-        }
-    }
-
-    private func loadWriting(textbookCode: String) async {
-        writingItems = .loading
-        do {
-            let (apiQuestions, _, rawData) = try await api.fetchWritingQuestions(textbookCode: textbookCode)
-            let items = try guardEmpty(apiQuestions).map { q in
-                TextInputItem(
-                    id: q.id,
-                    sourceText: q.prompt,
-                    sourceTranslation: nil,
-                    instruction: "字数要求：\(q.wordLimit.min)-\(q.wordLimit.max) 词",
-                    instructionTranslation: nil,
-                    referenceAnswer: q.referenceAnswer,
-                    keywords: [],
-                    explanation: "参考范文已展示。请对照学习。",
-                    isSelfEvaluated: true
-                )
-            }
-            lastRawJSON = rawData
-            lastQuestionCount = items.count
-            writingItems = .loaded(items)
-        } catch {
-            writingItems = .error(error.localizedDescription)
         }
     }
 

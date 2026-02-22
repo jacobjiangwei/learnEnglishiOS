@@ -58,14 +58,11 @@ struct APIReadingPassage: Codable, Identifiable {
     let textbookCode: String
     let title: String
     let content: String
-    let translation: String?
     let questions: [APIReadingSubQuestion]
 }
 
-struct APIReadingSubQuestion: Codable, Identifiable {
-    let id: String
+struct APIReadingSubQuestion: Codable {
     let stem: String
-    let translation: String?
     let options: [String]
     let correctIndex: Int
     let explanation: String?
@@ -155,25 +152,6 @@ struct APISpeakingQuestion: Codable, Identifiable {
     let referenceText: String
     let translation: String?
     let category: String
-}
-
-// MARK: - 写作题 (writing)
-
-struct APIWritingQuestion: Codable, Identifiable {
-    let id: String
-    let questionType: String
-    let textbookCode: String
-    let prompt: String
-    let promptTranslation: String
-    let category: String
-    let wordLimit: APIWordLimit
-    let referenceAnswer: String
-    let referenceTranslation: String
-}
-
-struct APIWordLimit: Codable {
-    let min: Int
-    let max: Int
 }
 
 // MARK: - 词汇题 (vocabulary)

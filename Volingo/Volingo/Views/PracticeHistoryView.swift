@@ -126,8 +126,6 @@ struct HistoryReplayRouterView: View {
                 replayListening
             case .speaking:
                 replaySpeaking
-            case .writing:
-                replayTextInput(state: vm.writingItems, title: "写作专项")
             case .vocabulary:
                 replayMCQ(title: "词汇专项", state: vm.vocabularyQuestions)
             case .grammar:

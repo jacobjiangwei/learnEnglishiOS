@@ -254,10 +254,6 @@ final class APIService {
         return try await fetchQuestions(questionType: "speaking", textbookCode: textbookCode, count: count)
     }
 
-    func fetchWritingQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIWritingQuestion], remaining: Int, rawData: Data) {
-        return try await fetchQuestions(questionType: "writing", textbookCode: textbookCode, count: count)
-    }
-
     func fetchVocabularyQuestions(textbookCode: String, count: Int = 5) async throws -> (questions: [APIVocabularyQuestion], remaining: Int, rawData: Data) {
         return try await fetchQuestions(questionType: "vocabulary", textbookCode: textbookCode, count: count)
     }

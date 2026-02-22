@@ -168,17 +168,17 @@
         }
         .glossary-table td { padding: 4px 8px; border-bottom: 1px solid #f0f0f0; }
         /* Question generation */
-        .batch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-        .batch-card {
-            border: 2px solid #e5e5ea; border-radius: 10px; padding: 14px;
-            cursor: pointer; transition: all 0.15s;
+        .type-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+        .type-card {
+            border: 2px solid #e5e5ea; border-radius: 10px; padding: 12px;
+            cursor: pointer; transition: all 0.15s; text-align: center;
         }
-        .batch-card:hover { border-color: #007aff; background: #f0f7ff; }
-        .batch-card.selected { border-color: #007aff; background: #e8f4fd; }
-        .batch-card.done { border-color: #34c759; background: #e8fae8; }
-        .batch-card h4 { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
-        .batch-card p { font-size: 12px; color: #86868b; margin: 0; }
-        .batch-card .batch-count { font-size: 11px; color: #007aff; font-weight: 600; margin-top: 4px; }
+        .type-card:hover { border-color: #007aff; background: #f0f7ff; }
+        .type-card.selected { border-color: #007aff; background: #e8f4fd; }
+        .type-card.done { border-color: #34c759; background: #e8fae8; opacity: 0.7; }
+        .type-card .type-icon { font-size: 20px; margin-bottom: 4px; }
+        .type-card .type-name { font-size: 13px; font-weight: 700; }
+        .type-card .type-count { font-size: 11px; color: #86868b; margin-top: 2px; }
         .question-preview {
             background: #1d1d1f; color: #f5f5f7; border-radius: 10px;
             padding: 16px; max-height: 600px; overflow-y: auto;
@@ -305,39 +305,13 @@
                 </div>
             </div>
 
-            <!-- Step G3: Select batch & generate -->
-            <div class="card" id="genBatchCard" style="display:none">
-                <h2><span class="step">3</span> 选择出题批次</h2>
+            <!-- Step G3: Select question type & generate -->
+            <div class="card" id="genTypeCard" style="display:none">
+                <h2><span class="step">3</span> 选择题型</h2>
                 <p style="font-size:13px;color:#86868b;margin-bottom:12px;">
-                    每个批次生成 2~3 种相关题型。可逐批生成、审核、入库。
+                    选择一种题型，AI 将为该单元生成对应的练习题。可逐个生成、审核、入库。
                 </p>
-                <div class="batch-grid">
-                    <div class="batch-card" data-batch="0" onclick="selectBatch(0)">
-                        <h4>📝 Batch 1: 词汇基础</h4>
-                        <p>vocabulary + cloze</p>
-                        <div class="batch-count">词汇 ×15 + 填空 ×10 = 25 题</div>
-                    </div>
-                    <div class="batch-card" data-batch="1" onclick="selectBatch(1)">
-                        <h4>📐 Batch 2: 语法选择</h4>
-                        <p>grammar + MCQ + errorCorrection</p>
-                        <div class="batch-count">语法 ×8 + 选择 ×10 + 纠错 ×5 = 23 题</div>
-                    </div>
-                    <div class="batch-card" data-batch="2" onclick="selectBatch(2)">
-                        <h4>✍️ Batch 3: 产出型</h4>
-                        <p>translation + rewriting + ordering</p>
-                        <div class="batch-count">翻译 ×6 + 改写 ×5 + 排序 ×5 = 16 题</div>
-                    </div>
-                    <div class="batch-card" data-batch="3" onclick="selectBatch(3)">
-                        <h4>📖 Batch 4: 篇章型</h4>
-                        <p>reading + writing</p>
-                        <div class="batch-count">阅读 ×3 篇 + 写作 ×3 = 6 题</div>
-                    </div>
-                    <div class="batch-card" data-batch="4" onclick="selectBatch(4)">
-                        <h4>🎧 Batch 5: 听说型</h4>
-                        <p>listening + speaking</p>
-                        <div class="batch-count">听力 ×6 + 口语 ×6 = 12 题</div>
-                    </div>
-                </div>
+                <div class="type-grid" id="typeGrid"></div>
                 <button class="btn btn-orange" id="generateBtn" onclick="generateQuestions()" disabled>
                     🤖 生成题目
                 </button>
@@ -348,7 +322,7 @@
             <div class="card" id="genFullBookCard" style="display:none">
                 <h2>📚 整书一键出题</h2>
                 <p style="font-size:13px;color:#86868b;margin-bottom:12px;">
-                    自动遍历所有单元 × 5 个 Batch，逐一调用 GPT-4o 生成。完成后统一展示审核。
+                    自动遍历所有单元 × 11 种题型，逐一调用 GPT-4o 生成。完成后统一展示审核。
                 </p>
                 <div id="fullBookProgress" style="display:none;margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
@@ -852,12 +826,21 @@
         let genDocs = [];          // analyzed documents
         let genSelectedDoc = null; // currently selected doc full object
         let genSelectedUnit = null;
-        let genSelectedBatch = null;
+        let genSelectedType = null; // currently selected question type string
         let genPendingQuestions = []; // questions waiting for commit
 
-        const BATCH_NAMES = [
-            'VocabCloze', 'GrammarMcqError', 'TransRewriteOrder',
-            'ReadingWriting', 'ListeningSpeaking'
+        const QUESTION_TYPES = [
+            { key: 'vocabulary',        icon: '📝', label: '词汇选择' },
+            { key: 'cloze',             icon: '✏️', label: '完形填空' },
+            { key: 'grammar',           icon: '📐', label: '语法选择' },
+            { key: 'multipleChoice',    icon: '🔘', label: '综合选择' },
+            { key: 'errorCorrection',   icon: '❌', label: '纠错' },
+            { key: 'translation',       icon: '🌐', label: '翻译' },
+            { key: 'rewriting',         icon: '✍️', label: '句型改写' },
+            { key: 'sentenceOrdering',  icon: '🔢', label: '句子排序' },
+            { key: 'reading',           icon: '📖', label: '阅读理解' },
+            { key: 'listening',         icon: '🎧', label: '听力' },
+            { key: 'speaking',          icon: '🗣️', label: '口语' }
         ];
 
         async function loadGenDocList() {
@@ -885,16 +868,16 @@
             const docId = sel.value;
             const info = document.getElementById('genDocInfo');
             const unitCard = document.getElementById('genUnitCard');
-            const batchCard = document.getElementById('genBatchCard');
+            const typeCard = document.getElementById('genTypeCard');
             const resultCard = document.getElementById('genResultCard');
 
             unitCard.style.display = 'none';
-            batchCard.style.display = 'none';
+            typeCard.style.display = 'none';
             resultCard.style.display = 'none';
             document.getElementById('genFullBookCard').style.display = 'none';
             genSelectedDoc = null;
             genSelectedUnit = null;
-            genSelectedBatch = null;
+            genSelectedType = null;
             genPendingQuestions = [];
 
             if (!docId) { info.style.display = 'none'; return; }
@@ -935,14 +918,14 @@
         function onGenUnitChange() {
             const unitNum = parseInt(document.getElementById('genUnitSelect').value);
             const unitInfo = document.getElementById('genUnitInfo');
-            const batchCard = document.getElementById('genBatchCard');
+            const typeCard = document.getElementById('genTypeCard');
             const resultCard = document.getElementById('genResultCard');
             resultCard.style.display = 'none';
             genPendingQuestions = [];
 
             if (isNaN(unitNum) || !genSelectedDoc) {
                 unitInfo.style.display = 'none';
-                batchCard.style.display = 'none';
+                typeCard.style.display = 'none';
                 return;
             }
 
@@ -957,11 +940,21 @@
             // Render unit detail (what AI will see)
             renderUnitDetail(unit);
 
-            // Reset batch selection
-            document.querySelectorAll('.batch-card').forEach(c => c.classList.remove('selected', 'done'));
-            genSelectedBatch = null;
+            // Render type cards
+            renderTypeGrid();
+            genSelectedType = null;
             document.getElementById('generateBtn').disabled = true;
-            batchCard.style.display = 'block';
+            typeCard.style.display = 'block';
+        }
+
+        function renderTypeGrid() {
+            const grid = document.getElementById('typeGrid');
+            grid.innerHTML = QUESTION_TYPES.map(t =>
+                `<div class="type-card" data-type="${t.key}" onclick="selectType('${t.key}')">
+                    <div class="type-icon">${t.icon}</div>
+                    <div class="type-name">${t.label}</div>
+                </div>`
+            ).join('');
         }
 
         function renderUnitDetail(unit) {
@@ -1036,17 +1029,18 @@
             el.innerHTML = html;
         }
 
-        function selectBatch(batchIdx) {
-            genSelectedBatch = batchIdx;
-            document.querySelectorAll('.batch-card').forEach((c, i) => {
-                c.classList.toggle('selected', i === batchIdx && !c.classList.contains('done'));
+        function selectType(typeKey) {
+            genSelectedType = typeKey;
+            document.querySelectorAll('.type-card').forEach(c => {
+                c.classList.toggle('selected', c.dataset.type === typeKey && !c.classList.contains('done'));
             });
             document.getElementById('generateBtn').disabled = false;
         }
 
         async function generateQuestions() {
-            if (genSelectedBatch === null || !genSelectedDoc || !genSelectedUnit) return;
+            if (!genSelectedType || !genSelectedDoc || !genSelectedUnit) return;
 
+            const typeInfo = QUESTION_TYPES.find(t => t.key === genSelectedType);
             const btn = document.getElementById('generateBtn');
             const status = document.getElementById('genStatus');
             const resultCard = document.getElementById('genResultCard');
@@ -1054,7 +1048,7 @@
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span> AI 出题中（约 30~60 秒）…';
             status.className = 'status loading';
-            status.textContent = `正在为 Unit ${genSelectedUnit.unitNumber} 的 Batch ${genSelectedBatch + 1} 生成题目…`;
+            status.textContent = `正在为 Unit ${genSelectedUnit.unitNumber} 生成「${typeInfo?.label || genSelectedType}」题目…`;
 
             try {
                 const resp = await fetch(`${API}/generate-questions`, {
@@ -1064,7 +1058,7 @@
                         docId: genSelectedDoc.id,
                         textbook: genSelectedDoc.textbook,
                         unitNumber: genSelectedUnit.unitNumber,
-                        batch: genSelectedBatch
+                        questionType: genSelectedType
                     })
                 });
 
@@ -1076,18 +1070,18 @@
                 const data = await resp.json();
                 genPendingQuestions = data.questions;
 
-                // Reset commit UI for the new batch
+                // Reset commit UI
                 document.getElementById('commitBtn').disabled = false;
                 document.getElementById('commitBtn').innerHTML = '✅ 确认入库题库';
                 document.getElementById('commitStatus').textContent = '';
                 document.getElementById('commitStatus').className = 'status';
 
-                // Mark batch as done
-                document.querySelector(`.batch-card[data-batch="${genSelectedBatch}"]`).classList.add('done');
-                document.querySelector(`.batch-card[data-batch="${genSelectedBatch}"]`).classList.remove('selected');
+                // Mark type as done
+                const typeEl = document.querySelector(`.type-card[data-type="${genSelectedType}"]`);
+                if (typeEl) { typeEl.classList.add('done'); typeEl.classList.remove('selected'); }
 
                 status.className = 'status success';
-                status.textContent = `✅ 生成完成！共 ${data.count} 道题。请审核后确认入库。`;
+                status.textContent = `✅ 生成完成！共 ${data.count} 道「${typeInfo?.label || genSelectedType}」题。请审核后确认入库。`;
 
                 // Show results
                 showGeneratedQuestions(data.questions);
@@ -1148,7 +1142,7 @@
             if (q.prompt) body += `<div style="font-weight:600;margin-bottom:4px">${q.prompt}</div>`;
             if (q.sourceText) body += `<div style="font-weight:600;margin-bottom:4px">${q.sourceText}</div>`;
             if (q.originalSentence) body += `<div style="font-weight:600;margin-bottom:4px">${q.originalSentence}</div>`;
-            if (q.content) body += `<div style="background:#f9f9f9;padding:8px;border-radius:6px;font-size:13px;margin-bottom:6px">${q.content?.substring(0, 200)}…</div>`;
+            if (q.content) body += `<div style="background:#f9f9f9;padding:10px;border-radius:6px;font-size:13px;margin-bottom:6px;line-height:1.6;white-space:pre-wrap">${q.content}</div>`;
             if (q.transcript) body += `<div style="font-style:italic;font-size:13px;margin-bottom:6px">🎧 ${q.transcript}</div>`;
 
             // Options
@@ -1172,19 +1166,25 @@
             if (q.explanation) body += `<div style="font-size:12px;color:#86868b;margin-top:4px;border-top:1px solid #f0f0f0;padding-top:4px">💡 ${q.explanation}</div>`;
             if (q.explanationTranslation) body += `<div style="font-size:12px;color:#86868b">${q.explanationTranslation}</div>`;
 
-            // Sub-questions (reading)
-            if (q.subQuestions && Array.isArray(q.subQuestions)) {
-                q.subQuestions.forEach((sq, si) => {
-                    body += `<div style="margin-top:8px;padding:8px;background:#f9f9f9;border-radius:6px;font-size:13px">`;
-                    body += `<div style="font-weight:600">Q${si + 1}: ${sq.stem || ''}</div>`;
+            // Sub-questions (reading) — field name is "questions" from GPT output
+            const subs = q.subQuestions || q.questions;
+            if (subs && Array.isArray(subs)) {
+                body += `<div style="margin-top:10px;border-top:1px solid #e5e5ea;padding-top:8px"><div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#007aff">📋 子题 (${subs.length})</div>`;
+                subs.forEach((sq, si) => {
+                    body += `<div style="margin-top:8px;padding:10px;background:#f5f5f7;border-radius:8px;font-size:13px;border-left:3px solid #007aff">`;
+                    body += `<div style="font-weight:700;margin-bottom:4px">Q${si + 1}: ${sq.stem || ''}</div>`;
                     if (sq.options) {
                         sq.options.forEach((opt, oi) => {
                             const isC = oi === sq.correctIndex;
-                            body += `<div style="${isC ? 'color:#34c759;font-weight:700' : ''}">${String.fromCharCode(65 + oi)}. ${opt} ${isC ? '✓' : ''}</div>`;
+                            body += `<div style="padding:2px 0;${isC ? 'color:#34c759;font-weight:700' : ''}">${String.fromCharCode(65 + oi)}. ${opt} ${isC ? ' ✓' : ''}</div>`;
                         });
+                    }
+                    if (sq.explanation) {
+                        body += `<div style="font-size:12px;color:#86868b;margin-top:4px;border-top:1px solid #e5e5ea;padding-top:4px">💡 ${sq.explanation}</div>`;
                     }
                     body += `</div>`;
                 });
+                body += `</div>`;
             }
 
             return `<div id="qcard-${idx}" style="border:1px solid #e5e5ea;border-radius:10px;padding:14px;margin-bottom:10px;border-left:4px solid ${color};opacity:1;transition:opacity 0.2s">
@@ -1220,7 +1220,7 @@
                 const resp = await fetch(`${API}/eval-questions`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ questions: genPendingQuestions })
+                    body: JSON.stringify({ questions: genPendingQuestions, questionType: genSelectedType || 'vocabulary' })
                 });
 
                 if (!resp.ok) {
@@ -1348,7 +1348,6 @@
 
         // ===== Full-book generation =====
         let fullBookCancelled = false;
-        const BATCH_LABELS = { VocabCloze: '词汇填空', GrammarMcqError: '语法选择/纠错', TransRewriteOrder: '翻译/改写/排序', ReadingWriting: '阅读/写作', ListeningSpeaking: '听力/口语' };
 
         function fullBookLog(msg) {
             const log = document.getElementById('fullBookLog');
@@ -1364,7 +1363,7 @@
             if (!units?.length) { alert('无单元数据'); return; }
 
             fullBookCancelled = false;
-            const totalSteps = units.length * BATCH_NAMES.length;
+            const totalSteps = units.length * QUESTION_TYPES.length;
             let completed = 0;
             let allQuestions = [];
             let errors = [];
@@ -1381,19 +1380,19 @@
             progressCount.textContent = `0/${totalSteps}`;
             statusEl.className = 'status';
             statusEl.textContent = '';
-            document.getElementById('fullBookStartBtn').disabled = true;
+            document.getElementById('fullBookProgress').style.display = 'block';
+            document.getElementById('fullBookBtn').disabled = true;
             document.getElementById('fullBookCancelBtn').style.display = 'inline-block';
 
-            fullBookLog(`开始整书出题：${genSelectedDoc.displayName}，共 ${units.length} 个单元 × ${BATCH_NAMES.length} 批次 = ${totalSteps} 步`);
+            fullBookLog(`开始整书出题：${genSelectedDoc.displayName}，共 ${units.length} 个单元 × ${QUESTION_TYPES.length} 种题型 = ${totalSteps} 步`);
 
             for (const unit of units) {
                 if (fullBookCancelled) break;
 
-                for (const batch of BATCH_NAMES) {
+                for (const qtype of QUESTION_TYPES) {
                     if (fullBookCancelled) break;
 
-                    const label = BATCH_LABELS[batch] || batch;
-                    fullBookLog(`▶ Unit ${unit.unitNumber} (${unit.unitTitle || ''}) — ${label}…`);
+                    fullBookLog(`▶ Unit ${unit.unitNumber} (${unit.unitTitle || ''}) — ${qtype.icon} ${qtype.label}…`);
 
                     try {
                         const resp = await fetch(`${API}/generate-questions`, {
@@ -1403,7 +1402,7 @@
                                 docId: genSelectedDoc.id,
                                 textbook: genSelectedDoc.textbook,
                                 unitNumber: unit.unitNumber,
-                                batch: batch
+                                questionType: qtype.key
                             })
                         });
 
@@ -1415,10 +1414,10 @@
                         const data = await resp.json();
                         const qs = data.questions || [];
                         allQuestions.push(...qs);
-                        fullBookLog(`  ✅ 生成 ${qs.length} 道 (累计 ${allQuestions.length})`);
+                        fullBookLog(`  ✅ ${qtype.label} ${qs.length} 道 (累计 ${allQuestions.length})`);
                     } catch (e) {
-                        errors.push({ unit: unit.unitNumber, batch, error: e.message });
-                        fullBookLog(`  ❌ 失败: ${e.message}`);
+                        errors.push({ unit: unit.unitNumber, type: qtype.key, error: e.message });
+                        fullBookLog(`  ❌ ${qtype.label} 失败: ${e.message}`);
                     }
 
                     completed++;
@@ -1430,7 +1429,7 @@
             }
 
             // Finished
-            document.getElementById('fullBookStartBtn').disabled = false;
+            document.getElementById('fullBookBtn').disabled = false;
             document.getElementById('fullBookCancelBtn').style.display = 'none';
 
             if (fullBookCancelled) {
@@ -1448,7 +1447,6 @@
                 genPendingQuestions = allQuestions;
                 const resultCard = document.getElementById('genResultCard');
                 resultCard.style.display = 'block';
-                document.getElementById('genResultCount').textContent = allQuestions.length;
                 const container = document.getElementById('genQuestionCards');
                 container.innerHTML = '';
                 allQuestions.forEach((q, i) => container.appendChild(renderQuestionCard(q, i)));

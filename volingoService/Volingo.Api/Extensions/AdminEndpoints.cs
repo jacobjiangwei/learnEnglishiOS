@@ -174,12 +174,15 @@ public static class AdminEndpoints
         .WithTags("Admin")
         .ExcludeFromDescription();
 
-        // ── Generate questions for a unit + batch ──
+        // ── Generate questions for a unit + question type ──
         app.MapPost("/api/v1/admin/generate-questions", async (
             ITextbookService textbooks,
             IQuestionGeneratorService generator,
             GenerateQuestionsApiRequest request) =>
         {
+            if (!QuestionTypes.IsValid(request.QuestionType))
+                return Results.BadRequest(new { detail = $"未知题型: {request.QuestionType}" });
+
             // Load the document
             var doc = await textbooks.GetDocumentAsync(request.DocId, request.Textbook);
             if (doc?.Analysis is null)
@@ -199,7 +202,7 @@ public static class AdminEndpoints
                 UnitNumber: request.UnitNumber,
                 Unit: unit,
                 Glossary: doc.Analysis.VocabularyGlossary,
-                Batch: request.Batch
+                QuestionType: request.QuestionType
             );
 
             try
@@ -210,7 +213,7 @@ public static class AdminEndpoints
                     success = true,
                     textbookCode = request.DocId,
                     unitNumber = request.UnitNumber,
-                    batch = request.Batch.ToString(),
+                    questionType = request.QuestionType,
                     count = questions.Count,
                     questions
                 });
@@ -226,17 +229,21 @@ public static class AdminEndpoints
         // ── Eval: AI quality check on generated questions ──
         app.MapPost("/api/v1/admin/eval-questions", async (
             OpenAIQuestionGeneratorService evaluator,
-            CommitQuestionsRequest request) =>
+            EvalQuestionsRequest request) =>
         {
             if (request.Questions is null || request.Questions.Count == 0)
                 return Results.BadRequest(new { detail = "没有题目可以评审" });
 
+            if (string.IsNullOrEmpty(request.QuestionType) || !QuestionTypes.IsValid(request.QuestionType))
+                return Results.BadRequest(new { detail = $"请指定有效的题型" });
+
             try
             {
-                var results = await evaluator.EvalQuestionsAsync(request.Questions);
+                var results = await evaluator.EvalQuestionsAsync(request.Questions, request.QuestionType);
                 return Results.Ok(new
                 {
                     success = true,
+                    questionType = request.QuestionType,
                     total = request.Questions.Count,
                     passed = results.Count(r => r.Pass),
                     failed = results.Count(r => !r.Pass),
@@ -364,7 +371,12 @@ public record GenerateQuestionsApiRequest(
     string DocId,
     string Textbook,
     int UnitNumber,
-    QuestionBatch Batch
+    string QuestionType
+);
+
+public record EvalQuestionsRequest(
+    List<Dictionary<string, object>> Questions,
+    string QuestionType
 );
 
 public record CommitQuestionsRequest(

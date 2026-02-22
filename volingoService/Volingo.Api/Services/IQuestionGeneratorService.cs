@@ -4,12 +4,12 @@ namespace Volingo.Api.Services;
 
 /// <summary>
 /// AI-powered question generation from textbook analysis data.
-/// Generates questions per unit × batch (to stay within token limits).
+/// Generates questions per unit × question type.
 /// </summary>
 public interface IQuestionGeneratorService
 {
     /// <summary>
-    /// Generate questions for a specific unit and batch.
+    /// Generate questions for a specific unit and question type.
     /// Returns raw question dictionaries (dynamic JSON schema for Cosmos DB).
     /// </summary>
     Task<List<Dictionary<string, object>>> GenerateQuestionsAsync(
@@ -17,20 +17,29 @@ public interface IQuestionGeneratorService
 }
 
 /// <summary>
-/// Batch identifiers — each batch groups related question types.
+/// All supported question types.
 /// </summary>
-public enum QuestionBatch
+public static class QuestionTypes
 {
-    /// <summary>vocabulary + cloze</summary>
-    VocabCloze,
-    /// <summary>grammar + multipleChoice + errorCorrection</summary>
-    GrammarMcqError,
-    /// <summary>translation + rewriting + sentenceOrdering</summary>
-    TransRewriteOrder,
-    /// <summary>reading + writing</summary>
-    ReadingWriting,
-    /// <summary>listening + speaking</summary>
-    ListeningSpeaking,
+    public const string Vocabulary = "vocabulary";
+    public const string Cloze = "cloze";
+    public const string Grammar = "grammar";
+    public const string MultipleChoice = "multipleChoice";
+    public const string ErrorCorrection = "errorCorrection";
+    public const string Translation = "translation";
+    public const string Rewriting = "rewriting";
+    public const string SentenceOrdering = "sentenceOrdering";
+    public const string Reading = "reading";
+    public const string Listening = "listening";
+    public const string Speaking = "speaking";
+
+    public static readonly string[] All =
+    [
+        Vocabulary, Cloze, Grammar, MultipleChoice, ErrorCorrection,
+        Translation, Rewriting, SentenceOrdering, Reading, Listening, Speaking
+    ];
+
+    public static bool IsValid(string type) => All.Contains(type);
 }
 
 public record GenerateQuestionsRequest(
@@ -40,5 +49,5 @@ public record GenerateQuestionsRequest(
     int UnitNumber,
     UnitInfo Unit,
     List<GlossaryEntry> Glossary,
-    QuestionBatch Batch
+    string QuestionType
 );

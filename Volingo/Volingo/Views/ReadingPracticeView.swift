@@ -16,7 +16,6 @@ struct ReadingPracticeView: View {
     @State private var showExplanation = false
     @State private var correctCount = 0
     @State private var showResult = false
-    @State private var showPassage = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,28 +28,23 @@ struct ReadingPracticeView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        // 文章折叠
-                        Button(action: { withAnimation { showPassage.toggle() } }) {
-                            HStack {
-                                Text(passage.title)
-                                    .font(.headline)
-                                Spacer()
-                                Image(systemName: showPassage ? "chevron.up" : "chevron.down")
-                            }
-                            .foregroundColor(.primary)
-                        }
+                        // 文章始终可见
+                        Text(passage.title)
+                            .font(.headline)
 
-                        if showPassage {
-                            Text(passage.content)
-                                .font(.body)
-                                .padding()
-                                .background(Color(.secondarySystemGroupedBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
+                        Text(passage.content)
+                            .font(.body)
+                            .padding()
+                            .background(Color(.secondarySystemGroupedBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
 
                         Divider()
 
                         let question = passage.questions[currentIndex]
+
+                        Text("第 \(currentIndex + 1) 题")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
 
                         Text(question.stem)
                             .font(.title3.bold())
@@ -68,7 +62,6 @@ struct ReadingPracticeView: View {
                                 showExplanation = true
                                 let isCorrect = index == question.correctIndex
                                 if isCorrect { correctCount += 1 }
-                                onAnswer?(question.id, isCorrect)
                             }
                         }
 
@@ -98,6 +91,9 @@ struct ReadingPracticeView: View {
             selectedIndex = nil
             showExplanation = false
         } else {
+            // 所有子题做完，用 passage.id 提交一条记录
+            let allCorrect = correctCount == passage.questions.count
+            onAnswer?(passage.id, allCorrect)
             showResult = true
         }
     }
@@ -121,7 +117,7 @@ struct ReadingPracticeView: View {
             title: "The History of Tea",
             content: "Tea is one of the most popular drinks in the world.",
             questions: [
-                ReadingQuestion(id: "preview-q1", stem: "What is tea?", options: ["A food", "A drink", "A place", "A person"], correctIndex: 1, explanation: "Tea is a drink."),
+                ReadingQuestion(id: 0, stem: "What is tea?", options: ["A food", "A drink", "A place", "A person"], correctIndex: 1, explanation: "Tea is a drink."),
             ]
         ))
     }

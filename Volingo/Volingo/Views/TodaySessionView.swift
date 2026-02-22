@@ -125,8 +125,6 @@ struct CachedPracticeRouterView: View {
                 listeningContent
             case .speaking:
                 speakingContent
-            case .writing:
-                textInputContent(state: vm.writingItems, title: "写作专项")
             case .vocabulary:
                 mcqContent(title: "词汇专项", state: vm.vocabularyQuestions)
             case .grammar:
