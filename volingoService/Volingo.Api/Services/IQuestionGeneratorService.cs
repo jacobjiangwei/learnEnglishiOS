@@ -51,3 +51,4 @@ public record GenerateQuestionsRequest(
     List<GlossaryEntry> Glossary,
     string QuestionType
 );
+

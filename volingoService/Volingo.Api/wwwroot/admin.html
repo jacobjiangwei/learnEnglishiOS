@@ -318,9 +318,9 @@
                 <div class="status" id="genStatus"></div>
             </div>
 
-            <!-- Full-book generation -->
+            <!-- Full-book generation (per-unit × all types) -->
             <div class="card" id="genFullBookCard" style="display:none">
-                <h2>📚 整书一键出题</h2>
+                <h2>📚 整书一键出题（逐单元）</h2>
                 <p style="font-size:13px;color:#86868b;margin-bottom:12px;">
                     自动遍历所有单元 × 11 种题型，逐一调用 GPT-4o 生成。完成后统一展示审核。
                 </p>
@@ -908,7 +908,7 @@
                 });
                 unitCard.style.display = 'block';
 
-                // Show full-book card
+                // Show full-book card & book-level comp card
                 document.getElementById('genFullBookCard').style.display = 'block';
             } catch (e) {
                 info.innerHTML += `<span style="color:#ff3b30">加载失败: ${e.message}</span>`;
@@ -1459,6 +1459,7 @@
             fullBookCancelled = true;
             fullBookLog('⏹ 正在停止…');
         }
+
     </script>
 </body>
 </html>
