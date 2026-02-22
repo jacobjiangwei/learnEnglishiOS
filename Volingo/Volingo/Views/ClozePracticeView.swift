@@ -104,6 +104,7 @@ struct ClozePracticeView: View {
         }
         .navigationTitle("填空题")
         .navigationBarTitleDisplayMode(.inline)
+        .reportableQuestion(id: questions.isEmpty || showResult ? nil : questions[currentIndex].id)
     }
 
     private func checkAnswer(_ q: ClozeQuestion) -> Bool {

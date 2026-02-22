@@ -26,16 +26,19 @@ public class WordbookDocument
     public DateTime AddedAt { get; set; }
 }
 
-// ── Report (stored in "reports" container, PK: /deviceId) ──
+// ── Report (stored in "reports" container, PK: /id) ──
+// One document per questionId. Each report increments ReportCount.
 
 public class ReportDocument
 {
-    public string Id { get; set; } = "";
-    public string DeviceId { get; set; } = "";
-    public string QuestionId { get; set; } = "";
-    public string Reason { get; set; } = "";
-    public string? Description { get; set; }
-    public DateTime CreatedAt { get; set; }
+    public string Id { get; set; } = "";              // same as QuestionId
+    public string? QuestionType { get; set; }
+    public string? TextbookCode { get; set; }
+    public string? Reason { get; set; }                // 最近一次举报的错误类型
+    public string? LatestDescription { get; set; }     // 最近一次举报的补充说明
+    public int ReportCount { get; set; }
+    public DateTime FirstReportedAt { get; set; }
+    public DateTime LastReportedAt { get; set; }
 }
 
 // ── Dictionary (stored in "dictionary" container, PK: /word) ──

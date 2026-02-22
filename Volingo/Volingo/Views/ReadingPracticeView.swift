@@ -78,6 +78,7 @@ struct ReadingPracticeView: View {
         }
         .navigationTitle("阅读理解")
         .navigationBarTitleDisplayMode(.inline)
+        .reportableQuestion(id: passage.id)
     }
 
     private func optionLabel(_ index: Int) -> String {

@@ -86,6 +86,7 @@ struct MCQPracticeView: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .reportableQuestion(id: questions.isEmpty || showResult ? nil : questions[currentIndex].id)
     }
 
     private func optionLabel(_ index: Int) -> String {

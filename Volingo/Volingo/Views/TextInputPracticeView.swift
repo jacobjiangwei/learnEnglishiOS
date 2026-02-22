@@ -200,6 +200,7 @@ struct TextInputPracticeView: View {
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .reportableQuestion(id: items.isEmpty || showResult ? nil : items[currentIndex].id)
     }
 
     private func submit(_ item: TextInputItem) {

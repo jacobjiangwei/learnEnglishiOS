@@ -290,12 +290,14 @@ struct SubmitResultItem: Codable {
 
 struct ReportRequest: Codable {
     let questionId: String
-    let reason: String
+    let reason: String?
     let description: String?
+    let questionType: String?
 }
 
 struct ReportResponse: Codable {
-    let reportId: String
+    let questionId: String
+    let reportCount: Int
 }
 
 // MARK: - 生词本

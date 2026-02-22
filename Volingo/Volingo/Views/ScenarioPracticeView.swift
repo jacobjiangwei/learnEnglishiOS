@@ -103,6 +103,7 @@ struct ScenarioPracticeView: View {
         }
         .navigationTitle("场景训练")
         .navigationBarTitleDisplayMode(.inline)
+        .reportableQuestion(id: questions.isEmpty || showResult ? nil : questions[currentIndex].id)
     }
 
     private func optionLabel(_ index: Int) -> String {

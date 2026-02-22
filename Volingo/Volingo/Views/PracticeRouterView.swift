@@ -12,6 +12,7 @@ struct PracticeRouterView: View {
     let questionType: QuestionType
     @EnvironmentObject private var store: UserStateStore
     @StateObject private var vm = PracticeViewModel()
+    @State private var reportableQuestionId: String?
 
     private var textbookCode: String {
         store.currentTextbookCode ?? "juniorPEP-7a"
@@ -67,6 +68,16 @@ struct PracticeRouterView: View {
                 TodayPackageStore.shared.markCompleted(questionType: questionType.apiKey)
             }
             Task { await vm.submitResults() }
+        }
+        .onPreferenceChange(ReportableQuestionKey.self) { id in
+            reportableQuestionId = id
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                if let qid = reportableQuestionId {
+                    ReportQuestionButton(questionId: qid, questionType: questionType.apiKey)
+                }
+            }
         }
     }
 

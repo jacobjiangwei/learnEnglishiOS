@@ -104,6 +104,7 @@ struct ErrorCorrectionPracticeView: View {
         }
         .navigationTitle("纠错题")
         .navigationBarTitleDisplayMode(.inline)
+        .reportableQuestion(id: questions.isEmpty || showResult ? nil : questions[currentIndex].id)
     }
 
     private func wordBackground(_ word: String, question: ErrorCorrectionQuestion) -> Color {

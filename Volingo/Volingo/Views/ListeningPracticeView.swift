@@ -113,6 +113,7 @@ struct ListeningPracticeView: View {
         }
         .navigationTitle("听力专项")
         .navigationBarTitleDisplayMode(.inline)
+        .reportableQuestion(id: questions.isEmpty || showResult ? nil : questions[currentIndex].id)
         .onAppear { autoPlayAfterDelay() }
     }
 

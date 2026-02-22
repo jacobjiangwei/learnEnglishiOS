@@ -68,13 +68,10 @@ public static class ApiEndpoints
         .WithTags("Practice");
 
         // ── 4.2 投诉错误题目 ──
-        app.MapPost("/api/v1/practice/report", async (HttpContext ctx, IReportService reports, ReportRequest request) =>
+        app.MapPost("/api/v1/practice/report", async (IReportService reports, ReportRequest request) =>
         {
-            var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return MissingDeviceIdResult();
-
-            var reportId = await reports.ReportAsync(deviceId, request);
-            return Results.Ok(new ReportResponse(reportId));
+            var doc = await reports.ReportAsync(request);
+            return Results.Ok(new ReportResponse(doc.Id, doc.ReportCount));
         })
         .WithName("ReportQuestion")
         .WithTags("Practice");

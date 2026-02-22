@@ -204,6 +204,7 @@
         <div class="tab-bar">
             <button class="tab-btn active" onclick="switchTab('import')">📄 教材导入</button>
             <button class="tab-btn" onclick="switchTab('generate')">🤖 AI 出题</button>
+            <button class="tab-btn" onclick="switchTab('reports')">🚨 错题工单 <span id="reportBadge" style="background:#ff3b30;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:4px;display:none;"></span></button>
         </div>
 
         <!-- ==================== TAB: IMPORT ==================== -->
@@ -386,6 +387,37 @@
             </div>
 
         </div><!-- end tab-generate -->
+
+        <!-- ==================== TAB: REPORTS ==================== -->
+        <div class="tab-content" id="tab-reports">
+            <div class="card">
+                <h2>🚨 错题举报工单</h2>
+                <p style="font-size:13px;color:#86868b;margin-bottom:16px;">
+                    用户在做题时举报的问题题目，按被举报次数从高到低排列。点击查看题目内容，确认后可删除错题。
+                </p>
+                <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;">
+                    <button class="btn btn-primary btn-sm" onclick="loadReportTickets()">🔄 刷新</button>
+                    <span id="reportSummary" style="font-size:13px;color:#86868b;"></span>
+                </div>
+                <div id="reportTicketList">
+                    <p style="color:#86868b;font-size:14px;">加载中…</p>
+                </div>
+                <div id="reportPaging" style="display:none;margin-top:16px;display:flex;gap:12px;align-items:center;justify-content:center;">
+                    <button class="btn btn-sm" id="reportPrevBtn" onclick="reportPagePrev()" disabled>⬅ 上一页</button>
+                    <span id="reportPageInfo" style="font-size:13px;color:#86868b;"></span>
+                    <button class="btn btn-sm" id="reportNextBtn" onclick="reportPageNext()">下一页 ➡</button>
+                </div>
+            </div>
+        </div><!-- end tab-reports -->
+
+        <!-- Report Question Detail Modal -->
+        <div class="modal-overlay" id="reportDetailModal">
+            <div class="modal">
+                <button class="modal-close" onclick="closeReportDetailModal()">✕</button>
+                <h2 id="reportModalTitle">📋 题目详情</h2>
+                <div id="reportModalContent"></div>
+            </div>
+        </div>
 
         <!-- Analysis Modal -->
         <div class="modal-overlay" id="analysisModal">
@@ -816,12 +848,16 @@
         // Tab switching
         // ============================
         function switchTab(tab) {
+            const tabs = ['import', 'generate', 'reports'];
             document.querySelectorAll('.tab-btn').forEach((b, i) => {
-                b.classList.toggle('active', (tab === 'import' && i === 0) || (tab === 'generate' && i === 1));
+                b.classList.toggle('active', tabs[i] === tab);
             });
-            document.getElementById('tab-import').classList.toggle('active', tab === 'import');
-            document.getElementById('tab-generate').classList.toggle('active', tab === 'generate');
+            tabs.forEach(t => {
+                const el = document.getElementById('tab-' + t);
+                if (el) el.classList.toggle('active', t === tab);
+            });
             if (tab === 'generate') loadGenDocList();
+            if (tab === 'reports') loadReportTickets();
         }
 
         // ============================
@@ -1507,6 +1543,226 @@
                 }
             } catch (e) {
                 fullBookLog(`❌ 恢复失败: ${e.message}`, '#ff3b30');
+            }
+        }
+
+        // ============================
+        // Report Ticket Management
+        // ============================
+
+        let reportOffset = 0;
+        const REPORT_PAGE_SIZE = 20;
+
+        // Load badge count on init
+        loadReportBadge();
+
+        async function loadReportBadge() {
+            try {
+                const resp = await fetch(`${API}/reports?offset=0&limit=1`);
+                const data = await resp.json();
+                const badge = document.getElementById('reportBadge');
+                if (data.total > 0) {
+                    badge.textContent = data.total;
+                    badge.style.display = 'inline';
+                } else {
+                    badge.style.display = 'none';
+                }
+            } catch (e) { /* silent */ }
+        }
+
+        async function loadReportTickets() {
+            const container = document.getElementById('reportTicketList');
+            container.innerHTML = '<p style="color:#86868b;font-size:14px;">加载中…</p>';
+
+            try {
+                const resp = await fetch(`${API}/reports?offset=${reportOffset}&limit=${REPORT_PAGE_SIZE}`);
+                const data = await resp.json();
+                const summary = document.getElementById('reportSummary');
+                summary.textContent = `共 ${data.total} 条举报`;
+
+                // Update badge
+                const badge = document.getElementById('reportBadge');
+                if (data.total > 0) {
+                    badge.textContent = data.total;
+                    badge.style.display = 'inline';
+                } else {
+                    badge.style.display = 'none';
+                }
+
+                if (!data.items || data.items.length === 0) {
+                    container.innerHTML = '<p style="color:#86868b;font-size:14px;">🎉 没有举报工单</p>';
+                    document.getElementById('reportPaging').style.display = 'none';
+                    return;
+                }
+
+                let html = '<table class="inventory-table"><thead><tr>' +
+                    '<th>举报次数</th><th>题目 ID</th><th>题型</th><th>错误类型</th><th>补充说明</th><th>最近举报</th><th>操作</th>' +
+                    '</tr></thead><tbody>';
+
+                for (const item of data.items) {
+                    const shortId = item.id.length > 16 ? item.id.substring(0, 14) + '…' : item.id;
+                    const typeBadge = item.questionType
+                        ? `<span class="badge badge-ai">${item.questionType}</span>`
+                        : '<span class="badge badge-empty">—</span>';
+                    const reasonBadge = item.reason
+                        ? `<span class="badge" style="background:#ff9500;color:#fff;">${item.reason}</span>`
+                        : '<span style="color:#ccc;">—</span>';
+                    const descText = item.latestDescription
+                        ? `<span title="${item.latestDescription}" style="font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;">${item.latestDescription}</span>`
+                        : '<span style="color:#ccc;">—</span>';
+                    const lastTime = item.lastReportedAt ? new Date(item.lastReportedAt).toLocaleString('zh-CN') : '—';
+
+                    html += `<tr>
+                        <td><strong style="color:#ff3b30;font-size:18px;">${item.reportCount}</strong></td>
+                        <td style="font-family:monospace;font-size:12px;" title="${item.id}">${shortId}</td>
+                        <td>${typeBadge}</td>
+                        <td>${reasonBadge}</td>
+                        <td>${descText}</td>
+                        <td style="font-size:12px;color:#86868b;">${lastTime}</td>
+                        <td style="white-space:nowrap;">
+                            <button class="btn btn-sm btn-primary" onclick="viewReportedQuestion('${item.id}')" style="margin-right:4px;">
+                                👀 查看
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteReportedQuestion('${item.id}')">
+                                🗑️ 删题
+                            </button>
+                            <button class="btn btn-sm" onclick="dismissReport('${item.id}')" style="background:#86868b;color:#fff;margin-left:4px;">
+                                忽略
+                            </button>
+                        </td>
+                    </tr>`;
+                }
+
+                html += '</tbody></table>';
+                container.innerHTML = html;
+
+                // Paging controls
+                const paging = document.getElementById('reportPaging');
+                const totalPages = Math.ceil(data.total / REPORT_PAGE_SIZE);
+                const currentPage = Math.floor(reportOffset / REPORT_PAGE_SIZE) + 1;
+                paging.style.display = totalPages > 1 ? 'flex' : 'none';
+                document.getElementById('reportPageInfo').textContent = `第 ${currentPage} / ${totalPages} 页`;
+                document.getElementById('reportPrevBtn').disabled = reportOffset === 0;
+                document.getElementById('reportNextBtn').disabled = reportOffset + REPORT_PAGE_SIZE >= data.total;
+            } catch (e) {
+                container.innerHTML = `<p style="color:#ff3b30;">加载失败: ${e.message}</p>`;
+            }
+        }
+
+        function reportPagePrev() {
+            reportOffset = Math.max(0, reportOffset - REPORT_PAGE_SIZE);
+            loadReportTickets();
+        }
+        function reportPageNext() {
+            reportOffset += REPORT_PAGE_SIZE;
+            loadReportTickets();
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        async function viewReportedQuestion(questionId) {
+            const modal = document.getElementById('reportDetailModal');
+            const content = document.getElementById('reportModalContent');
+            content.innerHTML = '<p>加载中…</p>';
+            modal.classList.add('active');
+
+            try {
+                const resp = await fetch(`${API}/questions/${questionId}`);
+                if (!resp.ok) {
+                    content.innerHTML = '<p style="color:#ff3b30;">题目不存在或已被删除</p>';
+                    return;
+                }
+                const question = await resp.json();
+
+                let html = '<div style="margin-bottom:16px;">';
+                html += `<div style="font-size:13px;color:#86868b;margin-bottom:8px;">ID: <code>${questionId}</code></div>`;
+
+                if (question.questionType) html += `<div style="margin-bottom:8px;"><span class="badge badge-ai">${question.questionType}</span></div>`;
+                if (question.textbookCode) html += `<div style="font-size:13px;margin-bottom:8px;">教材: <strong>${question.textbookCode}</strong></div>`;
+
+                if (question.stem) html += `<div style="margin-bottom:8px;"><strong>题干:</strong> ${escapeHtml(question.stem)}</div>`;
+                if (question.sentence) html += `<div style="margin-bottom:8px;"><strong>句子:</strong> ${escapeHtml(question.sentence)}</div>`;
+                if (question.passage) html += `<div style="margin-bottom:8px;"><strong>文章:</strong><div style="background:#f9f9fb;border-radius:8px;padding:12px;font-size:13px;max-height:200px;overflow-y:auto;">${escapeHtml(question.passage)}</div></div>`;
+
+                if (question.options) {
+                    html += '<div style="margin-bottom:8px;"><strong>选项:</strong><ul style="margin:4px 0;padding-left:20px;">';
+                    question.options.forEach((opt, i) => {
+                        const label = String.fromCharCode(65 + i);
+                        const isCorrect = i === question.correctIndex;
+                        html += `<li style="${isCorrect ? 'color:#34c759;font-weight:700;' : ''}">${label}. ${escapeHtml(typeof opt === 'string' ? opt : JSON.stringify(opt))}${isCorrect ? ' ✅' : ''}</li>`;
+                    });
+                    html += '</ul></div>';
+                }
+
+                if (question.answer) html += `<div style="margin-bottom:8px;"><strong>答案:</strong> <span style="color:#34c759;font-weight:700;">${escapeHtml(String(question.answer))}</span></div>`;
+                if (question.explanation) html += `<div style="margin-bottom:8px;"><strong>解析:</strong> ${escapeHtml(question.explanation)}</div>`;
+
+                html += '</div>';
+
+                html += '<details style="margin-top:16px;"><summary style="cursor:pointer;font-size:13px;color:#007aff;">📋 完整 JSON</summary>';
+                html += `<pre style="background:#1d1d1f;color:#f5f5f7;border-radius:10px;padding:16px;max-height:400px;overflow-y:auto;font-size:12px;margin-top:8px;">${escapeHtml(JSON.stringify(question, null, 2))}</pre>`;
+                html += '</details>';
+
+                html += `<div style="display:flex;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid #e5e5ea;">
+                    <button class="btn btn-danger" onclick="deleteReportedQuestion('${questionId}');closeReportDetailModal();">🗑️ 删除此题</button>
+                    <button class="btn" onclick="dismissReport('${questionId}');closeReportDetailModal();" style="background:#86868b;color:#fff;">忽略举报</button>
+                    <button class="btn" onclick="closeReportDetailModal();" style="background:#e5e5ea;color:#1d1d1f;">关闭</button>
+                </div>`;
+
+                content.innerHTML = html;
+            } catch (e) {
+                content.innerHTML = `<p style="color:#ff3b30;">加载失败: ${e.message}</p>`;
+            }
+        }
+
+        function closeReportDetailModal() {
+            document.getElementById('reportDetailModal').classList.remove('active');
+        }
+
+        async function deleteReportedQuestion(questionId) {
+            if (!confirm(`确认删除题目 ${questionId.substring(0, 14)}…？\n删除后不可恢复！`)) return;
+
+            try {
+                const qResp = await fetch(`${API}/questions/${questionId}`);
+                if (!qResp.ok) {
+                    alert('题目不存在或已被删除');
+                    loadReportTickets();
+                    return;
+                }
+                const question = await qResp.json();
+                const textbookCode = question.textbookCode;
+                if (!textbookCode) { alert('无法获取 textbookCode'); return; }
+
+                const resp = await fetch(`${API}/reports/${questionId}/question?textbookCode=${encodeURIComponent(textbookCode)}`, {
+                    method: 'DELETE'
+                });
+                if (resp.ok) {
+                    alert('✅ 题目已删除');
+                    loadReportTickets();
+                } else {
+                    const err = await resp.json();
+                    alert(`删除失败: ${err.detail || '未知错误'}`);
+                }
+            } catch (e) {
+                alert(`删除失败: ${e.message}`);
+            }
+        }
+
+        async function dismissReport(questionId) {
+            try {
+                const resp = await fetch(`${API}/reports/${questionId}`, { method: 'DELETE' });
+                if (resp.ok) {
+                    loadReportTickets();
+                } else {
+                    const err = await resp.json();
+                    alert(`操作失败: ${err.detail || '未知错误'}`);
+                }
+            } catch (e) {
+                alert(`操作失败: ${e.message}`);
             }
         }
 

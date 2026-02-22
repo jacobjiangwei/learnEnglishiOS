@@ -29,8 +29,8 @@ public record SubmitRequest(List<SubmitResultItem> Results);
 public record SubmitResultItem(string QuestionId, bool IsCorrect, string? QuestionType = null);
 
 // ── Practice: Report ──
-public record ReportRequest(string QuestionId, string Reason, string? Description);
-public record ReportResponse(string ReportId);
+public record ReportRequest(string QuestionId, string? Reason = null, string? Description = null, string? QuestionType = null);
+public record ReportResponse(string QuestionId, int ReportCount);
 
 // ── User: Stats ──
 public record StatsResponse(int TotalCompleted, int TotalCorrect, int CurrentStreak, int LongestStreak, List<DailyActivity> DailyActivity, List<QuestionTypeStats> QuestionTypeStats);

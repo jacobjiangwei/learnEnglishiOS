@@ -386,6 +386,83 @@ public static class AdminEndpoints
         .WithName("AdminCommitQuestions")
         .WithTags("Admin");
 
+        // ── Report Tickets: list reports with paging ──
+        app.MapGet("/api/v1/admin/reports", async (IReportService reports, int? offset, int? limit) =>
+        {
+            var (items, total) = await reports.ListAsync(offset ?? 0, limit ?? 20);
+            return Results.Ok(new { total, offset = offset ?? 0, limit = limit ?? 20, items });
+        })
+        .WithName("AdminListReports")
+        .WithTags("Admin");
+
+        // ── Report Tickets: delete the reported question from questions container ──
+        app.MapDelete("/api/v1/admin/reports/{questionId}/question", async (
+            CosmosClient cosmos, IConfiguration config, IReportService reports,
+            string questionId, string textbookCode) =>
+        {
+            var dbName = config["CosmosDb:DatabaseName"] ?? "volingo";
+            var container = cosmos.GetContainer(dbName, "questions");
+
+            try
+            {
+                await container.DeleteItemAsync<object>(questionId, new PartitionKey(textbookCode));
+                // Remove the report counter too
+                await reports.DeleteAsync(questionId);
+                return Results.Ok(new { success = true, questionId, message = "题目已删除" });
+            }
+            catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return Results.NotFound(new { detail = $"题目不存在: {questionId}" });
+            }
+        })
+        .WithName("AdminDeleteReportedQuestion")
+        .WithTags("Admin");
+
+        // ── Report Tickets: dismiss (just delete the report counter) ──
+        app.MapDelete("/api/v1/admin/reports/{questionId}", async (IReportService reports, string questionId) =>
+        {
+            var deleted = await reports.DeleteAsync(questionId);
+            return deleted
+                ? Results.Ok(new { success = true, questionId })
+                : Results.NotFound(new { detail = $"举报不存在: {questionId}" });
+        })
+        .WithName("AdminDismissReport")
+        .WithTags("Admin");
+
+        // ── Get question content by ID (cross-partition) ──
+        app.MapGet("/api/v1/admin/questions/{questionId}", async (
+            CosmosClient cosmos, IConfiguration config, string questionId) =>
+        {
+            var dbName = config["CosmosDb:DatabaseName"] ?? "volingo";
+            var container = cosmos.GetContainer(dbName, "questions");
+
+            var query = new QueryDefinition("SELECT * FROM c WHERE c.id = @id")
+                .WithParameter("@id", questionId);
+
+            // Use stream API to avoid Newtonsoft→System.Text.Json serialization mismatch
+            using var iterator = container.GetItemQueryStreamIterator(query);
+            while (iterator.HasMoreResults)
+            {
+                using var response = await iterator.ReadNextAsync();
+                if (response.IsSuccessStatusCode && response.Content is not null)
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(response.Content);
+                    var documents = doc.RootElement.GetProperty("Documents");
+                    if (documents.GetArrayLength() > 0)
+                    {
+                        // Return raw JSON element directly
+                        return Results.Content(
+                            documents[0].GetRawText(),
+                            "application/json",
+                            System.Text.Encoding.UTF8);
+                    }
+                }
+            }
+            return Results.NotFound(new { detail = $"题目不存在: {questionId}" });
+        })
+        .WithName("AdminGetQuestion")
+        .WithTags("Admin");
+
 
         return app;
     }

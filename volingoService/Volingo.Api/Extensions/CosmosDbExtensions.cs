@@ -20,7 +20,7 @@ public static class CosmosDbExtensions
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("questions", "/textbookCode"));
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("completions", "/deviceId"));
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("wordbook", "/deviceId"));
-        await db.CreateContainerIfNotExistsAsync(new ContainerProperties("reports", "/deviceId"));
+        await db.CreateContainerIfNotExistsAsync(new ContainerProperties("reports", "/id"));
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("dailyPackages", "/textbookCode"));
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("textbook", "/textbook"));
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("dictionary", "/word"));

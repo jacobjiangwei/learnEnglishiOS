@@ -106,6 +106,7 @@ struct SpeakingPracticeView: View {
         }
         .navigationTitle("口语专项")
         .navigationBarTitleDisplayMode(.inline)
+        .reportableQuestion(id: questions.isEmpty || showResult ? nil : questions[currentIndex].id)
         .task {
             let granted = await speech.requestPermissions()
             permissionGranted = granted

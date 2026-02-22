@@ -292,8 +292,8 @@ final class APIService {
 
     // MARK: - 5. 题目投诉
 
-    func reportQuestion(questionId: String, reason: String, description: String? = nil) async throws -> ReportResponse {
-        let body = try JSONEncoder().encode(ReportRequest(questionId: questionId, reason: reason, description: description))
+    func reportQuestion(questionId: String, reason: String? = nil, description: String? = nil, questionType: String? = nil) async throws -> ReportResponse {
+        let body = try JSONEncoder().encode(ReportRequest(questionId: questionId, reason: reason, description: description, questionType: questionType))
         let request = makeRequest(path: "/api/v1/practice/report", method: "POST", body: body)
         return try await fetch(ReportResponse.self, request: request)
     }

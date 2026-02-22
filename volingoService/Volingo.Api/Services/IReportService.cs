@@ -3,9 +3,16 @@ using Volingo.Api.Models;
 namespace Volingo.Api.Services;
 
 /// <summary>
-/// Persists user reports about incorrect questions.
+/// Tracks per-question report counts. Each report increments the counter.
 /// </summary>
 public interface IReportService
 {
-    Task<string> ReportAsync(string deviceId, ReportRequest request);
+    /// <summary>Increment report count for a question (upsert).</summary>
+    Task<ReportDocument> ReportAsync(ReportRequest request);
+
+    /// <summary>List reports ordered by reportCount desc, with offset paging.</summary>
+    Task<(List<ReportDocument> Items, int Total)> ListAsync(int offset = 0, int limit = 20);
+
+    /// <summary>Delete a report document (after admin resolves it).</summary>
+    Task<bool> DeleteAsync(string questionId);
 }

@@ -125,6 +125,7 @@ struct OrderingPracticeView: View {
         }
         .navigationTitle("排序题")
         .navigationBarTitleDisplayMode(.inline)
+        .reportableQuestion(id: questions.isEmpty || showResult ? nil : questions[currentIndex].id)
     }
 
     private func submit(_ question: OrderingQuestion) {
