@@ -42,6 +42,10 @@ builder.Services.AddSingleton<ITextbookAnalyzerService, OpenAITextbookAnalyzerSe
 builder.Services.AddSingleton<OpenAIQuestionGeneratorService>();
 builder.Services.AddSingleton<IQuestionGeneratorService>(sp => sp.GetRequiredService<OpenAIQuestionGeneratorService>());
 
+// Background job service for full-book generation
+builder.Services.AddSingleton<FullBookJobService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<FullBookJobService>());
+
 // JSON serialization — HttpJsonOptions defaults to JsonSerializerDefaults.Web
 // (camelCase + case-insensitive read). We add further customizations:
 builder.Services.ConfigureHttpJsonOptions(options =>

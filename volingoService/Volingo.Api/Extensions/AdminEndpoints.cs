@@ -258,6 +258,79 @@ public static class AdminEndpoints
         .WithName("AdminEvalQuestions")
         .WithTags("Admin");
 
+        // ── Full-book background jobs ──
+        app.MapPost("/api/v1/admin/jobs/full-book", async (
+            ITextbookService textbooks,
+            FullBookJobService jobService,
+            FullBookStartRequest request) =>
+        {
+            var doc = await textbooks.GetDocumentAsync(request.DocId, request.Textbook);
+            if (doc?.Analysis is null)
+                return Results.BadRequest(new { detail = "文档不存在或未完成分析" });
+
+            var level = ResolveLevelFromTextbookCode(request.DocId);
+            var jobId = jobService.StartJob(
+                request.DocId, request.Textbook, doc.DisplayName,
+                request.DocId, doc.Analysis.Units, doc.Analysis.VocabularyGlossary, level);
+
+            return Results.Ok(new { jobId });
+        })
+        .WithName("AdminStartFullBookJob")
+        .WithTags("Admin");
+
+        app.MapGet("/api/v1/admin/jobs/{jobId}", (
+            FullBookJobService jobService, string jobId, int? logSince) =>
+        {
+            var job = jobService.GetJob(jobId);
+            if (job is null)
+                return Results.NotFound(new { detail = $"Job not found: {jobId}" });
+
+            var (logs, logVersion) = job.GetLogsSince(logSince ?? 0);
+
+            return Results.Ok(new
+            {
+                jobId = job.JobId,
+                status = job.Status.ToString().ToLowerInvariant(),
+                displayName = job.DisplayName,
+                currentStep = job.CurrentStep,
+                totalSteps = job.TotalSteps,
+                completedSteps = job.CompletedSteps,
+                totalGenerated = job.TotalGenerated,
+                totalCommitted = job.TotalCommitted,
+                errorCount = job.ErrorCount,
+                progress = job.TotalSteps > 0 ? Math.Round(100.0 * job.CompletedSteps / job.TotalSteps, 1) : 0,
+                createdAt = job.CreatedAt,
+                startedAt = job.StartedAt,
+                finishedAt = job.FinishedAt,
+                logVersion,
+                logs = logs.Select(l => new { time = l.Timestamp, message = l.Message, color = l.Color })
+            });
+        })
+        .WithName("AdminGetJobStatus")
+        .WithTags("Admin");
+
+        app.MapPost("/api/v1/admin/jobs/{jobId}/cancel", (
+            FullBookJobService jobService, string jobId) =>
+        {
+            var ok = jobService.CancelJob(jobId);
+            return ok
+                ? Results.Ok(new { success = true, message = "已请求取消" })
+                : Results.BadRequest(new { detail = "无法取消（任务不存在或已结束）" });
+        })
+        .WithName("AdminCancelJob")
+        .WithTags("Admin");
+
+        app.MapPost("/api/v1/admin/jobs/{jobId}/resume", (
+            FullBookJobService jobService, string jobId) =>
+        {
+            var ok = jobService.ResumeJob(jobId);
+            return ok
+                ? Results.Ok(new { success = true, message = "已恢复" })
+                : Results.BadRequest(new { detail = "无法恢复（任务不存在或未处于取消状态）" });
+        })
+        .WithName("AdminResumeJob")
+        .WithTags("Admin");
+
         // ── Commit generated questions to Cosmos DB ──
         app.MapPost("/api/v1/admin/commit-questions", async (
             CosmosClient cosmos,
@@ -384,3 +457,7 @@ public record CommitQuestionsRequest(
     List<Dictionary<string, object>> Questions
 );
 
+public record FullBookStartRequest(
+    string DocId,
+    string Textbook
+);

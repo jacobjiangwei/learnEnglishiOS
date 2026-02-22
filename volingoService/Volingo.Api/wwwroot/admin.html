@@ -318,28 +318,32 @@
                 <div class="status" id="genStatus"></div>
             </div>
 
-            <!-- Full-book generation (per-unit × all types) -->
+            <!-- Full-book generation: server-side background job -->
             <div class="card" id="genFullBookCard" style="display:none">
-                <h2>📚 整书一键出题（逐单元）</h2>
+                <h2>📚 整书一键出题</h2>
                 <p style="font-size:13px;color:#86868b;margin-bottom:12px;">
-                    自动遍历所有单元 × 11 种题型，逐一调用 GPT-4o 生成。完成后统一展示审核。
+                    服务器后台自动遍历所有单元 × 11 种题型，生成并入库。熊屏/切页不影响进度。
                 </p>
                 <div id="fullBookProgress" style="display:none;margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
-                        <span id="fullBookProgressText">准备中…</span>
+                        <span id="fullBookProgressText">0%</span>
                         <span id="fullBookProgressCount">0/0</span>
                     </div>
                     <div style="background:#e5e5ea;border-radius:4px;height:8px;overflow:hidden;">
                         <div id="fullBookProgressBar" style="background:#007aff;height:100%;width:0%;transition:width 0.3s;border-radius:4px;"></div>
                     </div>
-                    <div id="fullBookLog" style="margin-top:8px;font-size:12px;color:#86868b;max-height:150px;overflow-y:auto;font-family:monospace;"></div>
+                    <div id="fullBookSummary" style="margin-top:8px;font-size:13px;color:#1d1d1f;"></div>
+                    <div id="fullBookLog" style="margin-top:8px;font-size:12px;color:#86868b;max-height:300px;overflow-y:auto;font-family:monospace;line-height:1.6;"></div>
                 </div>
                 <div style="display:flex;gap:12px;">
-                    <button class="btn btn-analyze" id="fullBookBtn" onclick="generateFullBook()">
-                        📚 整书出题
+                    <button class="btn btn-analyze" id="fullBookBtn" onclick="startFullBookJob()">
+                        📚 开始整书出题
                     </button>
-                    <button class="btn btn-danger btn-sm" id="fullBookCancelBtn" onclick="cancelFullBook()" style="display:none">
+                    <button class="btn btn-danger btn-sm" id="fullBookCancelBtn" onclick="cancelFullBookJob()" style="display:none">
                         ⏹ 停止
+                    </button>
+                    <button class="btn btn-sm" id="fullBookResumeBtn" onclick="resumeFullBookJob()" style="display:none;background:#ff9500;color:#fff;">
+                        ▶️ 恢复
                     </button>
                 </div>
                 <div class="status" id="fullBookStatus"></div>
@@ -1346,118 +1350,164 @@
             document.getElementById('genStatus').className = 'status';
         }
 
-        // ===== Full-book generation =====
-        let fullBookCancelled = false;
+        // ===== Full-book generation: server-side background job =====
+        let fullBookJobId = null;
+        let fullBookPollTimer = null;
+        let fullBookLogVersion = 0;
 
-        function fullBookLog(msg) {
+        function fullBookLog(msg, color) {
             const log = document.getElementById('fullBookLog');
             const line = document.createElement('div');
-            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            const time = new Date().toLocaleTimeString();
+            line.innerHTML = `<span style="color:#86868b">[${time}]</span> ${color ? `<span style="color:${color}">${msg}</span>` : msg}`;
             log.appendChild(line);
             log.scrollTop = log.scrollHeight;
         }
 
-        async function generateFullBook() {
-            if (!genSelectedDoc) return;
-            const units = genSelectedDoc.analysis.units;
-            if (!units?.length) { alert('无单元数据'); return; }
-
-            fullBookCancelled = false;
-            const totalSteps = units.length * QUESTION_TYPES.length;
-            let completed = 0;
-            let allQuestions = [];
-            let errors = [];
-
-            // UI setup
-            const progressBar = document.getElementById('fullBookProgressBar');
-            const progressText = document.getElementById('fullBookProgressText');
-            const progressCount = document.getElementById('fullBookProgressCount');
-            const statusEl = document.getElementById('fullBookStatus');
+        function fullBookLogFromServer(entry) {
             const log = document.getElementById('fullBookLog');
-            log.innerHTML = '';
-            progressBar.style.width = '0%';
-            progressText.textContent = '0%';
-            progressCount.textContent = `0/${totalSteps}`;
-            statusEl.className = 'status';
-            statusEl.textContent = '';
-            document.getElementById('fullBookProgress').style.display = 'block';
-            document.getElementById('fullBookBtn').disabled = true;
-            document.getElementById('fullBookCancelBtn').style.display = 'inline-block';
+            const line = document.createElement('div');
+            const time = new Date(entry.time).toLocaleTimeString();
+            const msg = entry.color ? `<span style="color:${entry.color}">${entry.message}</span>` : entry.message;
+            line.innerHTML = `<span style="color:#86868b">[${time}]</span> ${msg}`;
+            log.appendChild(line);
+            log.scrollTop = log.scrollHeight;
+        }
 
-            fullBookLog(`开始整书出题：${genSelectedDoc.displayName}，共 ${units.length} 个单元 × ${QUESTION_TYPES.length} 种题型 = ${totalSteps} 步`);
+        function updateFullBookUI(data) {
+            const pct = data.progress || 0;
+            document.getElementById('fullBookProgressBar').style.width = pct + '%';
+            document.getElementById('fullBookProgressText').textContent = Math.round(pct) + '%';
+            document.getElementById('fullBookProgressCount').textContent = `${data.completedSteps}/${data.totalSteps}`;
+            document.getElementById('fullBookSummary').innerHTML =
+                `已生成 <strong>${data.totalGenerated}</strong> 道 · ` +
+                `已入库 <strong style="color:#34c759">${data.totalCommitted}</strong> 道 · ` +
+                `失败 <strong style="color:${data.errorCount ? '#ff3b30' : '#86868b'}">${data.errorCount}</strong> 个 / 共 ${data.totalSteps} 步`;
 
-            for (const unit of units) {
-                if (fullBookCancelled) break;
-
-                for (const qtype of QUESTION_TYPES) {
-                    if (fullBookCancelled) break;
-
-                    fullBookLog(`▶ Unit ${unit.unitNumber} (${unit.unitTitle || ''}) — ${qtype.icon} ${qtype.label}…`);
-
-                    try {
-                        const resp = await fetch(`${API}/generate-questions`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                docId: genSelectedDoc.id,
-                                textbook: genSelectedDoc.textbook,
-                                unitNumber: unit.unitNumber,
-                                questionType: qtype.key
-                            })
-                        });
-
-                        if (!resp.ok) {
-                            const err = await resp.json();
-                            throw new Error(err.detail || `HTTP ${resp.status}`);
-                        }
-
-                        const data = await resp.json();
-                        const qs = data.questions || [];
-                        allQuestions.push(...qs);
-                        fullBookLog(`  ✅ ${qtype.label} ${qs.length} 道 (累计 ${allQuestions.length})`);
-                    } catch (e) {
-                        errors.push({ unit: unit.unitNumber, type: qtype.key, error: e.message });
-                        fullBookLog(`  ❌ ${qtype.label} 失败: ${e.message}`);
-                    }
-
-                    completed++;
-                    const pct = Math.round(completed / totalSteps * 100);
-                    progressBar.style.width = pct + '%';
-                    progressText.textContent = pct + '%';
-                    progressCount.textContent = `${completed}/${totalSteps}`;
-                }
+            // Append new log entries
+            if (data.logs) {
+                data.logs.forEach(e => fullBookLogFromServer(e));
+                fullBookLogVersion = data.logVersion;
             }
 
-            // Finished
-            document.getElementById('fullBookBtn').disabled = false;
-            document.getElementById('fullBookCancelBtn').style.display = 'none';
+            // Button states
+            const status = data.status;
+            const isActive = status === 'running' || status === 'queued';
+            const isCancelled = status === 'cancelled';
+            document.getElementById('fullBookBtn').disabled = isActive;
+            document.getElementById('fullBookCancelBtn').style.display = isActive ? 'inline-block' : 'none';
+            document.getElementById('fullBookResumeBtn').style.display = isCancelled ? 'inline-block' : 'none';
 
-            if (fullBookCancelled) {
-                fullBookLog(`⏹ 已停止。已生成 ${allQuestions.length} 道题目。`);
-                statusEl.className = 'status error';
-                statusEl.textContent = `已停止，当前 ${allQuestions.length} 道题目已收集。`;
-            } else {
-                fullBookLog(`🎉 整书出题完成！共 ${allQuestions.length} 道，${errors.length} 个错误。`);
+            const statusEl = document.getElementById('fullBookStatus');
+            if (status === 'completed') {
                 statusEl.className = 'status success';
-                statusEl.textContent = `✅ 完成！共 ${allQuestions.length} 道题目，${errors.length} 个错误。`;
+                statusEl.textContent = `✅ 完成！共入库 ${data.totalCommitted} 道题目，${data.errorCount} 个错误。`;
+            } else if (status === 'cancelled') {
+                statusEl.className = 'status error';
+                statusEl.textContent = `已停止 — 已入库 ${data.totalCommitted} 道，可点“恢复”继续。`;
+            } else if (status === 'failed') {
+                statusEl.className = 'status error';
+                statusEl.textContent = `失败 — ${data.errorCount} 个错误。`;
+            } else {
+                statusEl.className = 'status';
+                statusEl.textContent = data.currentStep ? `正在处理: ${data.currentStep}` : '排队中…';
             }
 
-            // Show collected questions in review panel
-            if (allQuestions.length) {
-                genPendingQuestions = allQuestions;
-                const resultCard = document.getElementById('genResultCard');
-                resultCard.style.display = 'block';
-                const container = document.getElementById('genQuestionCards');
-                container.innerHTML = '';
-                allQuestions.forEach((q, i) => container.appendChild(renderQuestionCard(q, i)));
-                document.getElementById('genJsonPreview').textContent = JSON.stringify(allQuestions, null, 2);
-                resultCard.scrollIntoView({ behavior: 'smooth' });
+            // Stop polling if job finished
+            if (!isActive && fullBookPollTimer) {
+                clearInterval(fullBookPollTimer);
+                fullBookPollTimer = null;
             }
         }
 
-        function cancelFullBook() {
-            fullBookCancelled = true;
-            fullBookLog('⏹ 正在停止…');
+        function startFullBookPolling() {
+            if (fullBookPollTimer) clearInterval(fullBookPollTimer);
+            fullBookPollTimer = setInterval(async () => {
+                if (!fullBookJobId) return;
+                try {
+                    const resp = await fetch(`${API}/jobs/${fullBookJobId}?logSince=${fullBookLogVersion}`);
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        updateFullBookUI(data);
+                    }
+                } catch (e) {
+                    console.warn('Poll error:', e);
+                }
+            }, 3000);
+        }
+
+        async function startFullBookJob() {
+            if (!genSelectedDoc) return;
+
+            // Reset UI
+            document.getElementById('fullBookLog').innerHTML = '';
+            document.getElementById('fullBookProgress').style.display = 'block';
+            document.getElementById('fullBookProgressBar').style.width = '0%';
+            document.getElementById('fullBookProgressText').textContent = '0%';
+            document.getElementById('fullBookProgressCount').textContent = '0/0';
+            document.getElementById('fullBookSummary').textContent = '';
+            document.getElementById('fullBookStatus').className = 'status';
+            document.getElementById('fullBookStatus').textContent = '';
+            document.getElementById('fullBookBtn').disabled = true;
+            document.getElementById('fullBookCancelBtn').style.display = 'inline-block';
+            document.getElementById('fullBookResumeBtn').style.display = 'none';
+            fullBookLogVersion = 0;
+
+            fullBookLog('🚀 正在提交后台任务…');
+
+            try {
+                const resp = await fetch(`${API}/jobs/full-book`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        docId: genSelectedDoc.id,
+                        textbook: genSelectedDoc.textbook
+                    })
+                });
+
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.detail || `HTTP ${resp.status}`);
+                }
+
+                const data = await resp.json();
+                fullBookJobId = data.jobId;
+                fullBookLog(`✅ 任务已提交，jobId: ${data.jobId}`);
+                startFullBookPolling();
+            } catch (e) {
+                fullBookLog(`❌ 提交失败: ${e.message}`, '#ff3b30');
+                document.getElementById('fullBookBtn').disabled = false;
+                document.getElementById('fullBookCancelBtn').style.display = 'none';
+            }
+        }
+
+        async function cancelFullBookJob() {
+            if (!fullBookJobId) return;
+            try {
+                await fetch(`${API}/jobs/${fullBookJobId}/cancel`, { method: 'POST' });
+                fullBookLog('⏹ 已发送停止请求…', '#ff9500');
+            } catch (e) {
+                fullBookLog(`❌ 停止失败: ${e.message}`, '#ff3b30');
+            }
+        }
+
+        async function resumeFullBookJob() {
+            if (!fullBookJobId) return;
+            try {
+                const resp = await fetch(`${API}/jobs/${fullBookJobId}/resume`, { method: 'POST' });
+                if (resp.ok) {
+                    fullBookLog('▶️ 已恢复，继续待处理步骤…', '#34c759');
+                    document.getElementById('fullBookResumeBtn').style.display = 'none';
+                    document.getElementById('fullBookCancelBtn').style.display = 'inline-block';
+                    document.getElementById('fullBookBtn').disabled = true;
+                    startFullBookPolling();
+                } else {
+                    const err = await resp.json();
+                    fullBookLog(`❌ 恢复失败: ${err.detail}`, '#ff3b30');
+                }
+            } catch (e) {
+                fullBookLog(`❌ 恢复失败: ${e.message}`, '#ff3b30');
+            }
         }
 
     </script>
