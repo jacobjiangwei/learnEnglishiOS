@@ -4,7 +4,7 @@ using Volingo.Api.Services;
 namespace Volingo.Api.Extensions;
 
 /// <summary>
-/// Maps all Volingo API endpoints (8 endpoints total).
+/// Maps all 海豹英语 API endpoints (8 endpoints total).
 /// All use X-Device-Id header for user identification.
 /// </summary>
 public static class ApiEndpoints

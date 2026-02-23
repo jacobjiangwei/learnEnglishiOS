@@ -1,4 +1,4 @@
-# Volingo – 中国人专属的智能英语学习APP
+# 海豹英语 – 中国人专属的智能英语学习APP
 
 ## 一、项目背景与市场分析
 
@@ -247,7 +247,7 @@ Question Gen/Writing Feedback]
 
 #### 总体架构分层
 ```
-Volingo/
+海豹英语/
 ├── App/                    # 应用入口层
 ├── Features/               # 功能模块层 (按业务垂直切分)
 ├── Shared/                # 共享组件层 (水平复用)

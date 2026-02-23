@@ -1,6 +1,6 @@
 //
 //  ReviewSessionView.swift
-//  Volingo
+//  海豹英语
 //
 //  全屏沉浸式复习 Session
 //

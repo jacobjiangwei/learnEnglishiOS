@@ -1,6 +1,6 @@
 //
 //  ToastView.swift
-//  Volingo
+//  海豹英语
 //
 //  全局 Toast 组件 — 仿 Apple HUD 风格
 //  支持 success / error / info 三种样式

@@ -1,6 +1,6 @@
 //
 //  WordbookView.swift
-//  Volingo
+//  海豹英语
 //
 
 import SwiftUI

@@ -1,4 +1,4 @@
-# Volingo Architecture (Phase 1 - Overseas)
+# 海豹英语 Architecture (Phase 1 - Overseas)
 
 > Scope: Phase 1 overseas launch with Firebase Auth + Backend API
 > Goal: Fast validation, low ops overhead, scalable path to Phase B (China)

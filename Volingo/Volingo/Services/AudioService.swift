@@ -1,6 +1,6 @@
 //
 //  AudioService.swift
-//  Volingo
+//  海豹英语
 //
 //  Created by jacob on 2025/8/23.
 //
@@ -128,7 +128,7 @@ class AudioService: NSObject, ObservableObject {
     /// 录音文件存储路径
     private var recordingURL: URL {
         let dir = FileManager.default.temporaryDirectory
-        return dir.appendingPathComponent("volingo_recording.wav")
+        return dir.appendingPathComponent("haibao_recording.wav")
     }
 
     /// 切换音频会话为录音模式

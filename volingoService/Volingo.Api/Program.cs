@@ -65,7 +65,7 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
     app.MapScalarApiReference(options =>
     {
-        options.WithTitle("Volingo API")
+        options.WithTitle("海豹英语 API")
                .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
     });
 }
@@ -74,9 +74,9 @@ if (app.Environment.IsDevelopment())
 await app.InitializeCosmosDbAsync(databaseName);
 
 // ── Root ──
-app.MapGet("/", () => Results.Ok(new { service = "Volingo API", version = "1.0.0", status = "running" }));
+app.MapGet("/", () => Results.Ok(new { service = "海豹英语 API", version = "1.0.0", status = "running" }));
 
-// ── Volingo API endpoints (8 endpoints) ──
+// ── 海豹英语 API endpoints (8 endpoints) ──
 app.MapVolingoEndpoints();
 
 // ── Admin endpoints for textbook import & management ──

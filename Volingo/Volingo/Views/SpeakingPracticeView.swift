@@ -1,6 +1,6 @@
 //
 //  SpeakingPracticeView.swift
-//  Volingo
+//  海豹英语
 //
 //  Created by jacob on 2026/2/13.
 //
@@ -623,7 +623,7 @@ struct SpeakingPracticeView: View {
                 .foregroundColor(.red)
             Text("需要语音权限")
                 .font(.title3.bold())
-            Text("请在「设置 → Volingo」中开启麦克风和语音识别权限")
+            Text("请在「设置 → 海豹英语」中开启麦克风和语音识别权限")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)

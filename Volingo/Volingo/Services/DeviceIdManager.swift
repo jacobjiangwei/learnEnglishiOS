@@ -1,6 +1,6 @@
 //
 //  DeviceIdManager.swift
-//  Volingo
+//  海豹英语
 //
 //  Created by jacob on 2026/2/15.
 //
@@ -15,7 +15,7 @@ import Security
 final class DeviceIdManager {
     static let shared = DeviceIdManager()
     
-    private let service = "com.volingo.device-id"
+    private let service = "com.haibao-english.device-id"
     private let account = "device-uuid"
     
     private init() {}

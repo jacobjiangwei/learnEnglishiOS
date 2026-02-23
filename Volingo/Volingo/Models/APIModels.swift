@@ -1,6 +1,6 @@
 //
 //  APIModels.swift
-//  Volingo
+//  海豹英语
 //
 //  API 响应 / 请求的 Codable 模型，严格对齐 API_PROTOCOL.md
 //

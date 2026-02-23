@@ -1,6 +1,6 @@
 //
 //  APIService.swift
-//  Volingo
+//  海豹英语
 //
 //  对接后端全部 8 个 API 端点
 //
@@ -38,8 +38,8 @@ final class APIService {
     private static let devURL = "http://localhost:5174"
 
     /// 后端地址：
-    /// - Volingo-Prod scheme → 环境变量 USE_PROD_API=1 → 生产地址（可断点调试）
-    /// - Volingo scheme (Debug) → localhost
+    /// - 海豹英语-Prod scheme → 环境变量 USE_PROD_API=1 → 生产地址（可断点调试）
+    /// - 海豹英语 scheme (Debug) → localhost
     /// - Release (Archive/TestFlight) → 生产地址
     private let baseURL: String = {
         #if DEBUG

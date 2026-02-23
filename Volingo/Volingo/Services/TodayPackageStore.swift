@@ -1,6 +1,6 @@
 //
 //  TodayPackageStore.swift
-//  Volingo
+//  海豹英语
 //
 //  今日推荐套餐本地缓存：当日只拉一次，本地追踪完成状态
 //

@@ -1,6 +1,6 @@
 //
 //  OnboardingModels.swift
-//  Volingo
+//  海豹英语
 //
 //  Created by jacob on 2026/2/8.
 //
@@ -521,7 +521,7 @@ extension WelcomePage {
         WelcomePage(
             icon: "wand.and.stars",
             color: .orange,
-            title: "欢迎来到 Volingo",
+            title: "欢迎来到海豹英语",
             body: "专为中国孩子打造的智能英语学习伙伴，\n从单词到写作，一站式搞定"
         ),
         WelcomePage(

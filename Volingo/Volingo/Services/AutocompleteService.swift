@@ -1,6 +1,6 @@
 //
 //  AutocompleteService.swift
-//  Volingo
+//  海豹英语
 //
 //  Provides word auto-suggestions from a bundled SQLite database (words.db).
 //  The database is read-only and loaded from the app bundle.

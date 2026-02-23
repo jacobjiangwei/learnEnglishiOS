@@ -1,6 +1,6 @@
 //
 //  SpeechRecognitionService.swift
-//  Volingo
+//  海豹英语
 //
 //  语音识别 + 发音评测服务（基于 Apple Speech Framework）
 //

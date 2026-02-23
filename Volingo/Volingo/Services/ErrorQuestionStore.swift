@@ -1,6 +1,6 @@
 //
 //  ErrorQuestionStore.swift
-//  Volingo
+//  海豹英语
 //
 //  错题本：使用 FSRS 间隔重复算法管理做错的题目
 //  做错 → 加入错题本（FSRS .again）

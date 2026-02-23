@@ -1,6 +1,6 @@
 //
 //  PracticeHistoryStore.swift
-//  Volingo
+//  海豹英语
 //
 //  本地练习历史存储：保存原始 API JSON，支持回放
 //

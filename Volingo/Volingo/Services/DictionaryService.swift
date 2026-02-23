@@ -1,6 +1,6 @@
 //
 //  DictionaryService.swift
-//  Volingo
+//  海豹英语
 //
 //  Rewritten for new architecture: local SQLite cache (wordCache.db) + backend API + AI fallback.
 //  Old learnEnglishDict.db has been removed.

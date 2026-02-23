@@ -1,6 +1,6 @@
 //
 //  ReportQuestionView.swift
-//  Volingo
+//  海豹英语
 //
 //  举报错题组件：在任何练习界面都可以使用
 //
