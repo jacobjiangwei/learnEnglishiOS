@@ -102,3 +102,8 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Node.js (website)
+node_modules/
+dist/
+*.local
