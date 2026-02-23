@@ -92,8 +92,55 @@ class PracticeViewModel: ObservableObject {
             // 轻量类复用选择题
             await loadMCQ(textbookCode: textbookCode)
         case .errorReview:
-            // 错题复练复用选择题（后续可改为专用接口）
-            await loadMCQ(textbookCode: textbookCode)
+            // 错题复练：从本地历史中提取今日答错的题目
+            loadLocalErrorReview()
+        }
+    }
+
+    // MARK: - 错题复练（本地 FSRS）
+
+    /// 从 ErrorQuestionStore 提取待复习的错题（FSRS 调度）
+    private func loadLocalErrorReview() {
+        let pending = ErrorQuestionStore.shared.getQuestionsForReview(limit: 10)
+        print("[ErrorReview] 总错题: \(ErrorQuestionStore.shared.questions.count), 待复习: \(pending.count)")
+        for eq in pending {
+            print("[ErrorReview]   - \(eq.id) state=\(eq.memory.state) needsReview=\(eq.needsReview) graduated=\(eq.isGraduated)")
+        }
+
+        if pending.isEmpty {
+            mcqQuestions = .error("暂无待复习的错题，继续保持！🎉")
+            return
+        }
+
+        // 收集待复习的 MCQ 题目
+        var allMCQ: [MCQQuestion] = []
+        let decoder = JSONDecoder()
+
+        for eq in pending {
+            // rawQuestionJSON 是批量 API 响应，从中提取该题
+            if let resp = try? decoder.decode(QuestionsResponse<[APIMCQQuestion]>.self, from: eq.rawQuestionJSON) {
+                if let q = resp.questions.first(where: { $0.id == eq.id }) {
+                    allMCQ.append(MCQQuestion(id: q.id, stem: q.stem, translation: q.translation,
+                                             options: q.options, correctIndex: q.correctIndex,
+                                             explanation: q.explanation))
+                }
+            }
+            // vocabulary / grammar 格式
+            if allMCQ.last?.id != eq.id,
+               let resp = try? decoder.decode(QuestionsResponse<[APIVocabularyQuestion]>.self, from: eq.rawQuestionJSON) {
+                if let q = resp.questions.first(where: { $0.id == eq.id }) {
+                    allMCQ.append(MCQQuestion(id: q.id, stem: q.stem, translation: q.translation,
+                                             options: q.options, correctIndex: q.correctIndex,
+                                             explanation: q.explanation ?? ""))
+                }
+            }
+        }
+
+        if allMCQ.isEmpty {
+            mcqQuestions = .error("暂无待复习的错题，继续保持！🎉")
+        } else {
+            lastQuestionCount = allMCQ.count
+            mcqQuestions = .loaded(allMCQ)
         }
     }
 
@@ -115,16 +162,40 @@ class PracticeViewModel: ObservableObject {
     func recordAnswer(questionId: String, isCorrect: Bool) {
         guard !isReplayMode else { return }
         questionIds.append((id: questionId, isCorrect: isCorrect))
+
+        // 写入错题本（FSRS 管理）
+        if !isCorrect, let rawData = lastRawJSON, let typeKey = currentQuestionType {
+            ErrorQuestionStore.shared.addOrUpdateWrong(
+                questionId: questionId,
+                questionType: typeKey,
+                rawQuestionJSON: rawData
+            )
+        }
+
+        // 错题复练中做对 → 更新 FSRS
+        if isCorrect && currentQuestionType == QuestionType.errorReview.apiKey {
+            ErrorQuestionStore.shared.recordCorrect(questionId: questionId)
+        }
+        // 错题复练中又做错 → 更新 FSRS
+        if !isCorrect && currentQuestionType == QuestionType.errorReview.apiKey {
+            ErrorQuestionStore.shared.recordWrong(questionId: questionId)
+        }
     }
 
     /// 保存当前练习到本地历史记录
     func saveToHistory() {
         guard let rawData = lastRawJSON, let typeKey = currentQuestionType else { return }
         let displayName = QuestionType.from(apiKey: typeKey)?.rawValue ?? typeKey
+        let correct = questionIds.filter { $0.isCorrect }.count
+        let wrong = questionIds.filter { !$0.isCorrect }.count
+        let wrongIds = questionIds.filter { !$0.isCorrect }.map { $0.id }
         PracticeHistoryStore.shared.append(
             questionType: typeKey,
             displayName: displayName,
             questionCount: lastQuestionCount,
+            correctCount: correct,
+            wrongCount: wrong,
+            wrongQuestionIds: wrongIds,
             rawJSON: rawData
         )
     }

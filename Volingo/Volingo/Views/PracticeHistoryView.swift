@@ -76,15 +76,41 @@ private struct HistorySessionRow: View {
                 Text(session.displayName)
                     .font(.headline)
                 Spacer()
+                if session.correctCount + session.wrongCount > 0 {
+                    Text("\(session.accuracy)%")
+                        .font(.subheadline.bold())
+                        .foregroundColor(accuracyColor)
+                }
                 Text("\(session.questionCount) 题")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
-            Text(formattedDate)
-                .font(.caption)
-                .foregroundColor(.secondary)
+            HStack {
+                Text(formattedDate)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                if session.correctCount + session.wrongCount > 0 {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Label("\(session.correctCount)", systemImage: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                        Label("\(session.wrongCount)", systemImage: "xmark.circle.fill")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                }
+            }
         }
         .padding(.vertical, 4)
+    }
+
+    private var accuracyColor: Color {
+        switch session.accuracy {
+        case 90...100: return .green
+        case 60..<90: return .orange
+        default: return .red
+        }
     }
 
     private var formattedDate: String {

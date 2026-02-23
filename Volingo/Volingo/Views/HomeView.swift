@@ -175,11 +175,12 @@ struct HomeView: View {
 
     private var reviewSection: some View {
         HStack(spacing: 12) {
+            let wrongCount = ErrorQuestionStore.shared.pendingReviewCount
             NavigationLink(destination: PracticeRouterView(questionType: .errorReview)) {
                 ReviewQuickCard(
                     icon: "arrow.counterclockwise",
                     title: "错题复练",
-                    value: "回顾今日错题",
+                    value: wrongCount > 0 ? "\(wrongCount) 道错题待复习" : "暂无错题 🎉",
                     color: .red
                 )
             }
