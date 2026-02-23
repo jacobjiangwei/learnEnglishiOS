@@ -15,10 +15,10 @@ class NetworkService {
 
     #if DEBUG
     private let baseURL: String = ProcessInfo.processInfo.environment["USE_PROD_API"] == "1"
-        ? "https://volingo-api.thankfulbay-ca126ab1.eastasia.azurecontainerapps.io"
+        ? "https://api.haibaoenglishlearning.com"
         : "http://localhost:5174"
     #else
-    private let baseURL = "https://volingo-api.thankfulbay-ca126ab1.eastasia.azurecontainerapps.io"
+    private let baseURL = "https://api.haibaoenglishlearning.com"
     #endif
 
     private init() {

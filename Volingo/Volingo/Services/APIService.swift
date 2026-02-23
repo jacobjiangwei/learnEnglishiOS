@@ -34,7 +34,7 @@ enum APIServiceError: Error, LocalizedError {
 final class APIService {
     static let shared = APIService()
 
-    private static let prodURL = "https://volingo-api.thankfulbay-ca126ab1.eastasia.azurecontainerapps.io"
+    private static let prodURL = "https://api.haibaoenglishlearning.com"
     private static let devURL = "http://localhost:5174"
 
     /// 后端地址：
