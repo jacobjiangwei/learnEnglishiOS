@@ -103,6 +103,9 @@ Thumbs.db
 *.swo
 *~
 
+# RSA keys (auth)
+volingoService/keys/
+
 # Node.js (website)
 node_modules/
 dist/

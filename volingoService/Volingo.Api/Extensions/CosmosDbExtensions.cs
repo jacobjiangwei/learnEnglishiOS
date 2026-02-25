@@ -25,6 +25,10 @@ public static class CosmosDbExtensions
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("textbook", "/textbook"));
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("dictionary", "/word"));
 
+        // Auth containers
+        await db.CreateContainerIfNotExistsAsync(new ContainerProperties("users", "/id"));
+        await db.CreateContainerIfNotExistsAsync(new ContainerProperties("refreshTokens", "/userId"));
+
         logger.LogInformation("✅ Cosmos DB database ready.");
         return app;
     }

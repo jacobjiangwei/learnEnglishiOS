@@ -4,6 +4,34 @@
 @deviceId = test-device-001
 @textbookCode = juniorPEP-7a
 
+### ══════════════════════════════════════
+### Auth 认证相关
+### ══════════════════════════════════════
+
+### A1. [DEV] 测试登录（跳过 Apple 验证，仅开发环境可用）
+### 返回 accessToken + refreshToken，复制到下面的 @token 变量
+POST {{host}}/api/v1/auth/dev-login
+
+### A2. 刷新 Token（替换为实际 refreshToken）
+POST {{host}}/api/v1/auth/refresh
+Content-Type: application/json
+
+{
+    "refreshToken": "REPLACE_WITH_REFRESH_TOKEN"
+}
+
+### A3. 获取当前用户信息（需要 Bearer token）
+GET {{host}}/api/v1/auth/me
+Authorization: Bearer REPLACE_WITH_ACCESS_TOKEN
+
+### A4. 登出（吊销所有 Refresh Token）
+POST {{host}}/api/v1/auth/logout
+Authorization: Bearer REPLACE_WITH_ACCESS_TOKEN
+
+### ══════════════════════════════════════
+### 练习题目
+### ══════════════════════════════════════
+
 ### ──────────────────────────────────────
 ### 1. 获取练习题目 — 选择题
 ### ──────────────────────────────────────

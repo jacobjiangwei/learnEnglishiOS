@@ -1,6 +1,9 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Azure.Cosmos;
+using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using Volingo.Api.Extensions;
 using Volingo.Api.Services;
@@ -46,6 +49,46 @@ builder.Services.AddSingleton<IQuestionGeneratorService>(sp => sp.GetRequiredSer
 builder.Services.AddSingleton<FullBookJobService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<FullBookJobService>());
 
+// ── Authentication: RS256 JWT ──
+var rsaKey = RSA.Create();
+var privateKeyPath = builder.Configuration["Jwt:PrivateKeyPath"];
+if (!string.IsNullOrEmpty(privateKeyPath) && File.Exists(privateKeyPath))
+{
+    rsaKey.ImportFromPem(File.ReadAllText(privateKeyPath));
+}
+else
+{
+    // Fallback: generate ephemeral key for development (tokens won't survive restart)
+    rsaKey = RSA.Create(2048);
+    var logger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("Startup");
+    logger.LogWarning("No RSA key file found at '{Path}'. Using ephemeral key — tokens will not survive restart.", privateKeyPath);
+}
+var signingKey = new RsaSecurityKey(rsaKey);
+builder.Services.AddSingleton(signingKey);
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        var jwtConfig = builder.Configuration.GetSection("Jwt");
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtConfig["Issuer"] ?? "volingo",
+            ValidateAudience = true,
+            ValidAudience = jwtConfig["Audience"] ?? "volingo-api",
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromMinutes(1),
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = signingKey
+        };
+    });
+
+builder.Services.AddAuthorization();
+
+// ── Auth services ──
+builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+
 // JSON serialization — HttpJsonOptions defaults to JsonSerializerDefaults.Web
 // (camelCase + case-insensitive read). We add further customizations:
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -73,8 +116,14 @@ if (app.Environment.IsDevelopment())
 // Initialize Cosmos DB: create database & containers
 await app.InitializeCosmosDbAsync(databaseName);
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 // ── Root ──
 app.MapGet("/", () => Results.Ok(new { service = "海豹英语 API", version = "1.0.0", status = "running" }));
+
+// ── Auth endpoints ──
+app.MapAuthEndpoints();
 
 // ── 海豹英语 API endpoints (8 endpoints) ──
 app.MapVolingoEndpoints();

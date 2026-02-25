@@ -69,11 +69,14 @@ final class APIService {
 
     // MARK: - 通用请求
 
-    private func makeRequest(path: String, method: String = "GET", body: Data? = nil) -> URLRequest {
+    private func makeRequest(path: String, method: String = "GET", body: Data? = nil, skipAuth: Bool = false) -> URLRequest {
         var request = URLRequest(url: URL(string: baseURL + path)!)
         request.httpMethod = method
         request.setValue(DeviceIdManager.shared.deviceId, forHTTPHeaderField: "X-Device-Id")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if !skipAuth, let token = AuthTokenStore.shared.accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         if let body {
             request.httpBody = body
         }
@@ -328,5 +331,37 @@ final class APIService {
         let encoded = word.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? word
         let request = makeRequest(path: "/api/v1/dictionary/\(encoded)")
         return try await fetch(Word.self, request: request)
+    }
+
+    // MARK: - Auth Endpoints
+
+    /// POST /api/v1/auth/device — auto sign-in with device ID (zero friction)
+    func deviceSignIn(deviceId: String) async throws -> AuthResponse {
+        struct DeviceSignInBody: Encodable {
+            let deviceId: String
+        }
+        let body = try JSONEncoder().encode(DeviceSignInBody(deviceId: deviceId))
+        let request = makeRequest(path: "/api/v1/auth/device", method: "POST", body: body, skipAuth: true)
+        return try await fetch(AuthResponse.self, request: request)
+    }
+
+    /// POST /api/v1/auth/refresh — exchange refresh token for new token pair
+    func refreshAuthToken(refreshToken: String) async throws -> AuthResponse {
+        struct RefreshBody: Encodable { let refreshToken: String }
+        let body = try JSONEncoder().encode(RefreshBody(refreshToken: refreshToken))
+        let request = makeRequest(path: "/api/v1/auth/refresh", method: "POST", body: body, skipAuth: true)
+        return try await fetch(AuthResponse.self, request: request)
+    }
+
+    /// POST /api/v1/auth/logout — revoke current refresh token
+    func logout() async throws {
+        let request = makeRequest(path: "/api/v1/auth/logout", method: "POST")
+        try await fetchNoContent(request: request)
+    }
+
+    /// GET /api/v1/auth/me — fetch current user profile
+    func fetchCurrentUser() async throws -> AuthUserProfile {
+        let request = makeRequest(path: "/api/v1/auth/me")
+        return try await fetch(AuthUserProfile.self, request: request)
     }
 }
