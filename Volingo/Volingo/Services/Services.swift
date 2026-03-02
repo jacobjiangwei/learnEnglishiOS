@@ -27,12 +27,14 @@ class NetworkService {
         self.session = URLSession(configuration: config)
     }
 
-    /// 构建带 X-Device-Id 公共 Header 的 URLRequest
+    /// 構建带公共 Header 的 URLRequest
     func makeRequest(path: String, method: String = "GET", body: Data? = nil) -> URLRequest {
         var request = URLRequest(url: URL(string: baseURL + path)!)
         request.httpMethod = method
-        request.setValue(DeviceIdManager.shared.deviceId, forHTTPHeaderField: "X-Device-Id")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = AuthTokenStore.shared.accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         if let body = body {
             request.httpBody = body
         }

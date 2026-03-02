@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Volingo.Api.Models;
 using Volingo.Api.Services;
 
@@ -5,7 +6,7 @@ namespace Volingo.Api.Extensions;
 
 /// <summary>
 /// Maps all 海豹英语 API endpoints (8 endpoints total).
-/// All use X-Device-Id header for user identification.
+/// All authenticated endpoints extract userId from JWT claims.
 /// </summary>
 public static class ApiEndpoints
 {
@@ -17,10 +18,10 @@ public static class ApiEndpoints
             IQuestionService questions, ISubmitResultService submits,
             string questionType, string textbookCode, int? count) =>
         {
-            var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return MissingDeviceIdResult();
+            var userId = GetUserId(ctx);
+            if (userId is null) return UnauthorizedResult();
 
-            var completedIds = await submits.GetCompletedIdsAsync(deviceId);
+            var completedIds = await submits.GetCompletedIdsAsync(userId);
             var (questionList, remaining) = await questions.GetQuestionsAsync(
                 textbookCode, questionType, count ?? 5, completedIds);
 
@@ -29,6 +30,7 @@ public static class ApiEndpoints
 
             return Results.Ok(new QuestionsResponse(questionType, textbookCode, remaining, questionList));
         })
+        .RequireAuthorization()
         .WithName("GetQuestions")
         .WithTags("Practice");
 
@@ -45,12 +47,13 @@ public static class ApiEndpoints
         // ── 3.3 学习统计 ──
         app.MapGet("/api/v1/user/stats", async (HttpContext ctx, ISubmitResultService submitService, int? days) =>
         {
-            var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return MissingDeviceIdResult();
+            var userId = GetUserId(ctx);
+            if (userId is null) return UnauthorizedResult();
 
-            var stats = await submitService.GetStatsAsync(deviceId, days ?? 365);
+            var stats = await submitService.GetStatsAsync(userId, days ?? 365);
             return Results.Ok(stats);
         })
+        .RequireAuthorization()
         .WithName("GetUserStats")
         .WithTags("User");
 
@@ -58,12 +61,13 @@ public static class ApiEndpoints
         app.MapPost("/api/v1/practice/submit", async (HttpContext ctx,
             ISubmitResultService submitService, SubmitRequest request) =>
         {
-            var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return MissingDeviceIdResult();
+            var userId = GetUserId(ctx);
+            if (userId is null) return UnauthorizedResult();
 
-            await submitService.SubmitAsync(deviceId, request);
+            await submitService.SubmitAsync(userId, request);
             return Results.NoContent();
         })
+        .RequireAuthorization()
         .WithName("SubmitAnswer")
         .WithTags("Practice");
 
@@ -79,38 +83,41 @@ public static class ApiEndpoints
         // ── 5.1 添加生词 ──
         app.MapPost("/api/v1/wordbook/add", async (HttpContext ctx, IWordbookService wordbook, WordbookAddRequest request) =>
         {
-            var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return MissingDeviceIdResult();
+            var userId = GetUserId(ctx);
+            if (userId is null) return UnauthorizedResult();
 
-            var entry = await wordbook.AddWordAsync(deviceId, request);
+            var entry = await wordbook.AddWordAsync(userId, request);
             return Results.Ok(entry);
         })
+        .RequireAuthorization()
         .WithName("AddWord")
         .WithTags("Wordbook");
 
         // ── 5.2 删除生词 ──
         app.MapDelete("/api/v1/wordbook/{wordId}", async (HttpContext ctx, IWordbookService wordbook, string wordId) =>
         {
-            var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return MissingDeviceIdResult();
+            var userId = GetUserId(ctx);
+            if (userId is null) return UnauthorizedResult();
 
-            var deleted = await wordbook.DeleteWordAsync(deviceId, wordId);
+            var deleted = await wordbook.DeleteWordAsync(userId, wordId);
             if (!deleted) return Results.Problem(detail: "Word not found.", statusCode: 404, title: "Not Found");
 
             return Results.NoContent();
         })
+        .RequireAuthorization()
         .WithName("DeleteWord")
         .WithTags("Wordbook");
 
         // ── 5.3 获取生词列表（全量） ──
         app.MapGet("/api/v1/wordbook/list", async (HttpContext ctx, IWordbookService wordbook) =>
         {
-            var deviceId = GetDeviceId(ctx);
-            if (deviceId is null) return MissingDeviceIdResult();
+            var userId = GetUserId(ctx);
+            if (userId is null) return UnauthorizedResult();
 
-            var list = await wordbook.GetWordbookAsync(deviceId);
+            var list = await wordbook.GetWordbookAsync(userId);
             return Results.Ok(list);
         })
+        .RequireAuthorization()
         .WithName("GetWordbook")
         .WithTags("Wordbook");
 
@@ -137,18 +144,15 @@ public static class ApiEndpoints
         return app;
     }
 
-    private static string? GetDeviceId(HttpContext ctx)
-    {
-        return ctx.Request.Headers.TryGetValue("X-Device-Id", out var value) ? value.ToString() : null;
-    }
-
     /// <summary>
-    /// Return RFC 7807 Problem Details for missing X-Device-Id.
-    /// Uses Results.Problem() for standardized error format.
+    /// Extract userId from JWT ClaimTypes.NameIdentifier.
     /// </summary>
-    private static IResult MissingDeviceIdResult() =>
+    private static string? GetUserId(HttpContext ctx)
+        => ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+    private static IResult UnauthorizedResult() =>
         Results.Problem(
-            detail: "X-Device-Id header is required.",
-            statusCode: 400,
-            title: "Missing Device ID");
+            detail: "Authentication required.",
+            statusCode: 401,
+            title: "Unauthorized");
 }

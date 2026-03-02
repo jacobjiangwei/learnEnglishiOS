@@ -11,7 +11,7 @@ import Foundation
 
 enum APIServiceError: Error, LocalizedError {
     case invalidURL
-    case httpError(statusCode: Int, message: String?)
+    case httpError(statusCode: Int, message: String?, code: String?)
     case decodingError(Error)
     case networkError(Error)
 
@@ -19,12 +19,46 @@ enum APIServiceError: Error, LocalizedError {
         switch self {
         case .invalidURL:
             return "URL 无效"
-        case .httpError(let code, let msg):
+        case .httpError(let code, let msg, _):
             return "HTTP \(code): \(msg ?? "未知错误")"
         case .decodingError(let err):
             return "解码失败: \(err.localizedDescription)"
         case .networkError(let err):
             return "网络错误: \(err.localizedDescription)"
+        }
+    }
+
+    /// Machine-readable error code from backend
+    var errorCode: String? {
+        if case .httpError(_, _, let code) = self { return code }
+        return nil
+    }
+
+    /// User-facing Chinese error message based on error code
+    var localizedChineseMessage: String {
+        if case .httpError(_, _, let code) = self {
+            return Self.chineseMessage(for: code)
+        }
+        switch self {
+        case .networkError:
+            return "网络连接失败，请检查网络后重试"
+        default:
+            return "请求失败，请稍后重试"
+        }
+    }
+
+    /// Maps backend error codes to Chinese user-facing messages
+    static func chineseMessage(for code: String?) -> String {
+        switch code {
+        case "invalid_login_code":      return "验证码错误或已过期"
+        case "invalid_code":            return "验证码错误"
+        case "code_expired":            return "验证码已过期，请重新发送"
+        case "no_pending_verification": return "请先发送验证码"
+        case "email_already_bound":     return "邮箱已绑定，无需重复操作"
+        case "not_email_user":          return "当前不是邮箱账户，无法登出"
+        case "user_not_found":          return "用户不存在"
+        case "invalid_refresh_token":   return "登录已过期，请重新登录"
+        default:                        return "请求失败，请稍后重试"
         }
     }
 }
@@ -72,7 +106,6 @@ final class APIService {
     private func makeRequest(path: String, method: String = "GET", body: Data? = nil, skipAuth: Bool = false) -> URLRequest {
         var request = URLRequest(url: URL(string: baseURL + path)!)
         request.httpMethod = method
-        request.setValue(DeviceIdManager.shared.deviceId, forHTTPHeaderField: "X-Device-Id")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if !skipAuth, let token = AuthTokenStore.shared.accessToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -110,8 +143,8 @@ final class APIService {
         logRoundTrip(request: request, response: httpResponse, data: data, duration: CFAbsoluteTimeGetCurrent() - start)
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            let message = (try? decoder.decode(APIError.self, from: data))?.message
-            throw APIServiceError.httpError(statusCode: httpResponse.statusCode, message: message)
+            let apiError = try? decoder.decode(APIError.self, from: data)
+            throw APIServiceError.httpError(statusCode: httpResponse.statusCode, message: apiError?.message, code: apiError?.code)
         }
 
         do {
@@ -146,8 +179,8 @@ final class APIService {
         logRoundTrip(request: request, response: httpResponse, data: data, duration: CFAbsoluteTimeGetCurrent() - start)
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            let message = (try? decoder.decode(APIError.self, from: data))?.message
-            throw APIServiceError.httpError(statusCode: httpResponse.statusCode, message: message)
+            let apiError = try? decoder.decode(APIError.self, from: data)
+            throw APIServiceError.httpError(statusCode: httpResponse.statusCode, message: apiError?.message, code: apiError?.code)
         }
     }
 
@@ -164,8 +197,12 @@ final class APIService {
         lines.append("┌─[API] \(method) \(path)\(query)")
 
         // Request headers（只打有意义的）
-        if let deviceId = request.value(forHTTPHeaderField: "X-Device-Id") {
-            lines.append("│  ➡️ X-Device-Id: \(deviceId)")
+        if let auth = request.value(forHTTPHeaderField: "Authorization"), auth.hasPrefix("Bearer ") {
+            let token = String(auth.dropFirst(7))
+            let preview = token.prefix(8) + "…" + token.suffix(8)
+            lines.append("│  ➡️ 🔑 Authorization: Bearer \(preview)")
+        } else {
+            lines.append("│  ➡️ 🔓 No Authorization header")
         }
 
         // Request body
@@ -363,5 +400,54 @@ final class APIService {
     func fetchCurrentUser() async throws -> AuthUserProfile {
         let request = makeRequest(path: "/api/v1/auth/me")
         return try await fetch(AuthUserProfile.self, request: request)
+    }
+
+    // MARK: - Email Auth Endpoints
+
+    /// POST /api/v1/auth/bind-email — send verification code to bind email
+    func bindEmail(email: String) async throws {
+        struct Body: Encodable { let email: String }
+        let body = try JSONEncoder().encode(Body(email: email))
+        let request = makeRequest(path: "/api/v1/auth/bind-email", method: "POST", body: body)
+        try await fetchNoContent(request: request)
+    }
+
+    /// POST /api/v1/auth/verify-email — verify code to complete email binding
+    func verifyEmail(code: String) async throws -> AuthResponse {
+        struct Body: Encodable { let code: String }
+        let body = try JSONEncoder().encode(Body(code: code))
+        let request = makeRequest(path: "/api/v1/auth/verify-email", method: "POST", body: body)
+        return try await fetch(AuthResponse.self, request: request)
+    }
+
+    /// POST /api/v1/auth/send-login-code — send passwordless login code
+    func sendLoginCode(email: String) async throws {
+        struct Body: Encodable { let email: String; let deviceId: String }
+        let body = try JSONEncoder().encode(Body(email: email, deviceId: DeviceIdManager.shared.deviceId))
+        let request = makeRequest(path: "/api/v1/auth/send-login-code", method: "POST", body: body, skipAuth: true)
+        try await fetchNoContent(request: request)
+    }
+
+    /// POST /api/v1/auth/verify-login-code — verify code for passwordless login
+    func verifyLoginCode(email: String, code: String) async throws -> AuthResponse {
+        struct Body: Encodable { let email: String; let code: String; let deviceId: String }
+        let body = try JSONEncoder().encode(Body(email: email, code: code, deviceId: DeviceIdManager.shared.deviceId))
+        let request = makeRequest(path: "/api/v1/auth/verify-login-code", method: "POST", body: body, skipAuth: true)
+        return try await fetch(AuthResponse.self, request: request)
+    }
+
+    /// POST /api/v1/auth/email-logout — logout from email account, revert to device user
+    func emailLogout() async throws {
+        let request = makeRequest(path: "/api/v1/auth/email-logout", method: "POST")
+        try await fetchNoContent(request: request)
+    }
+
+    /// PATCH /api/v1/auth/profile — update user profile (level, textbook, semester)
+    func updateProfile(level: String?, textbookCode: String?, semester: String?) async throws {
+        struct Body: Encodable { let level: String?; let textbookCode: String?; let semester: String? }
+        let body = try JSONEncoder().encode(Body(level: level, textbookCode: textbookCode, semester: semester))
+        let request = makeRequest(path: "/api/v1/auth/profile", method: "PATCH", body: body)
+        // We don't need the response — fire and forget from the caller's perspective
+        let _: AuthUserProfile = try await fetch(AuthUserProfile.self, request: request)
     }
 }

@@ -106,6 +106,9 @@ Thumbs.db
 # RSA keys (auth)
 volingoService/keys/
 
+# Secrets (local dev config with keys)
+**/appsettings.Development.json
+
 # Node.js (website)
 node_modules/
 dist/

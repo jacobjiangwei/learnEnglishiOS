@@ -48,6 +48,17 @@ enum UserLevel: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Stable identifier for API transport (enum case name, e.g. "junior1", "cefrB2")
+    var apiKey: String {
+        // Use String(describing:) which returns the case name, not rawValue
+        String(describing: self)
+    }
+
+    /// Find a UserLevel by its API key
+    static func from(apiKey: String) -> UserLevel? {
+        allCases.first { $0.apiKey == apiKey }
+    }
+
     /// Whether this is an elementary school level (grades 1-6)
     var isPrimary: Bool {
         switch self {
@@ -521,14 +532,14 @@ extension WelcomePage {
         WelcomePage(
             icon: "wand.and.stars",
             color: .orange,
-            title: "欢迎来到海豹英语",
-            body: "专为中国孩子打造的智能英语学习伙伴，\n从单词到写作，一站式搞定"
+            title: "智能英语学习伙伴",
+            body: "专为中国孩子打造，\n从单词到写作，一站式搞定"
         ),
         WelcomePage(
             icon: "chart.line.uptrend.xyaxis",
             color: .blue,
-            title: "量身定制你的学习之路",
-            body: "通过科学定级测试，\n为你推荐最适合的学习内容和练习难度"
+            title: "量身定制学习之路",
+            body: "根据你的等级和教材，\n推荐最适合的学习内容和练习难度"
         ),
         WelcomePage(
             icon: "brain.head.profile",

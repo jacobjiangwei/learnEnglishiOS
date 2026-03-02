@@ -105,6 +105,34 @@ final class UserStateStore: ObservableObject {
         save()
     }
 
+    /// Restore state from cloud profile after login.
+    /// Returns `true` if onboarding was fully restored (user can skip onboarding).
+    @discardableResult
+    func restoreFromCloudProfile(_ profile: AuthUserProfile) -> Bool {
+        // Need at least level to consider the profile "complete"
+        guard let levelStr = profile.level,
+              let level = UserLevel.allCases.first(where: { $0.apiKey == levelStr }) else {
+            return false
+        }
+
+        userState.selectedLevel = level
+        userState.confirmedLevel = level
+
+        // Restore textbook if available
+        if let tbCode = profile.textbookCode {
+            userState.selectedTextbook = TextbookOption.allCases.first(where: { $0.seriesCode == tbCode })
+        }
+
+        // Restore semester if available
+        if let semStr = profile.semester {
+            userState.selectedSemester = Semester(rawValue: semStr)
+        }
+
+        userState.isOnboardingCompleted = true
+        save()
+        return true
+    }
+
     /// 当前教材编码，用于 API 请求（如 "juniorPEP-7a"）
     var currentTextbookCode: String? {
         guard let textbook = userState.selectedTextbook,

@@ -18,8 +18,8 @@ public static class CosmosDbExtensions
 
         // Create containers
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("questions", "/textbookCode"));
-        await db.CreateContainerIfNotExistsAsync(new ContainerProperties("completions", "/deviceId"));
-        await db.CreateContainerIfNotExistsAsync(new ContainerProperties("wordbook", "/deviceId"));
+        await db.CreateContainerIfNotExistsAsync(new ContainerProperties("completions", "/userId"));
+        await db.CreateContainerIfNotExistsAsync(new ContainerProperties("wordbook", "/userId"));
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("reports", "/id"));
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("dailyPackages", "/textbookCode"));
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("textbook", "/textbook"));
@@ -27,7 +27,13 @@ public static class CosmosDbExtensions
 
         // Auth containers
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("users", "/id"));
+        await db.CreateContainerIfNotExistsAsync(new ContainerProperties("userProfiles", "/id"));
+        await db.CreateContainerIfNotExistsAsync(new ContainerProperties("identities", "/id"));
         await db.CreateContainerIfNotExistsAsync(new ContainerProperties("refreshTokens", "/userId"));
+        await db.CreateContainerIfNotExistsAsync(new ContainerProperties("emailVerifications", "/userId")
+        {
+            DefaultTimeToLive = 600 // 10 minutes auto-expiry
+        });
 
         logger.LogInformation("✅ Cosmos DB database ready.");
         return app;

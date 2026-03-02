@@ -51,6 +51,7 @@ final class OnboardingCoordinator: ObservableObject {
 
     /// Dynamically computed step pipeline.
     /// Textbook step is included only when multiple options exist.
+    /// Level test is hidden — users pick level + textbook and go straight in.
     var pipeline: [OnboardingStepType] {
         var steps: [OnboardingStepType] = [.welcome, .levelSelect]
 
@@ -64,8 +65,9 @@ final class OnboardingCoordinator: ObservableObject {
             steps.append(.textbookSelect)
         }
 
-        steps.append(.levelTest)
-        steps.append(.result)
+        // Level test hidden for now — skip straight to learning
+        // steps.append(.levelTest)
+        // steps.append(.result)
         return steps
     }
 
@@ -78,12 +80,9 @@ final class OnboardingCoordinator: ObservableObject {
         "\(currentIndex + 1)/\(pipeline.count)"
     }
 
-    /// True when the current step is the last one before the test.
-    /// Used to show a "跳过测试" option.
-    var isLastBeforeTest: Bool {
-        let p = pipeline
-        guard let testIdx = p.firstIndex(of: .levelTest) else { return false }
-        return currentIndex == testIdx - 1
+    /// True when the current step is the last step in the pipeline.
+    var isLastStep: Bool {
+        currentIndex == pipeline.count - 1
     }
 
     // MARK: Navigation
@@ -155,6 +154,7 @@ final class OnboardingCoordinator: ObservableObject {
     }
 
     /// Commit draft → UserStateStore and finish (skip test path).
+    /// Also creates device user if needed and syncs profile to server.
     func skipTest(store: UserStateStore) {
         guard let level = draft.selectedLevel else { return }
         syncDraftToStore(store)
@@ -164,15 +164,54 @@ final class OnboardingCoordinator: ObservableObject {
             selectedLevel: level,
             textbook: draft.selectedTextbook
         )
+        
+        // Lazy user creation + profile sync
+        Task {
+            await createUserAndSyncProfile(store: store)
+        }
     }
 
     /// Commit draft → UserStateStore and finish (test completed path).
+    /// Also creates device user if needed and syncs profile to server.
     func completeWithTest(store: UserStateStore) {
         guard let confirmed = draft.confirmedLevel else { return }
         syncDraftToStore(store)
         AnalyticsService.shared.trackOnboardingCompleted()
         AnalyticsService.shared.setUserLevel(confirmed.rawValue)
         store.completeOnboarding(testScore: draft.testScore, confirmedLevel: confirmed)
+        
+        // Lazy user creation + profile sync
+        Task {
+            await createUserAndSyncProfile(store: store)
+        }
+    }
+
+    /// Create anonymous device user (if not yet authenticated) and sync profile to server.
+    private func createUserAndSyncProfile(store: UserStateStore) async {
+        let authManager = AuthManager.shared
+        
+        // Step 1: Create device user if not authenticated
+        if !authManager.isAuthenticated {
+            do {
+                try await authManager.createDeviceUser()
+                print("[Onboarding] ✅ 匿名用户创建成功")
+            } catch {
+                print("[Onboarding] ⚠️ 创建匿名用户失败: \(error)")
+                return
+            }
+        }
+        
+        // Step 2: Sync profile (level, textbook, semester) to server
+        if let textbookCode = store.currentTextbookCode {
+            let level = (draft.confirmedLevel ?? draft.selectedLevel)?.apiKey ?? ""
+            let semester = draft.selectedSemester?.rawValue
+            do {
+                try await authManager.updateProfile(level: level, textbookCode: textbookCode, semester: semester)
+                print("[Onboarding] ✅ 用户资料已同步到服务器")
+            } catch {
+                print("[Onboarding] ⚠️ 同步用户资料失败: \(error)")
+            }
+        }
     }
 
     /// Restore from an entry point (e.g. "modify goal", "retest")
@@ -213,6 +252,7 @@ struct OnboardingFlowView: View {
     @EnvironmentObject private var store: UserStateStore
     @StateObject private var coordinator = OnboardingCoordinator()
     @State private var didInitialize = false
+    @State private var showEmailLogin = false
 
     var body: some View {
         NavigationStack {
@@ -225,26 +265,35 @@ struct OnboardingFlowView: View {
                 .ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    // Header
-                    HStack {
-                        Text(coordinator.currentStep.title)
-                            .font(.system(size: 22, weight: .bold))
-                            .foregroundColor(.primary)
-                        Spacer()
-                        Text(coordinator.stepLabel)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.top, 16)
+                    // Header (hidden on welcome)
+                    if coordinator.currentStep != .welcome {
+                        HStack {
+                            Text(coordinator.currentStep.title)
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Text(coordinator.stepLabel)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.top, 16)
 
-                    Spacer(minLength: 16)
+                        Spacer(minLength: 16)
+                    }
 
                     // Step content
                     stepView
 
-                    Spacer(minLength: 24)
+                    if coordinator.currentStep != .welcome {
+                        Spacer(minLength: 24)
+                    }
                 }
                 .padding(.horizontal, 20)
+            }
+        }
+        .sheet(isPresented: $showEmailLogin) {
+            EmailLoginView {
+                handleLoginSuccess()
             }
         }
         .onAppear {
@@ -255,6 +304,17 @@ struct OnboardingFlowView: View {
         }
     }
 
+    /// After login/register: restore from cloud profile or advance past welcome
+    private func handleLoginSuccess() {
+        if let profile = AuthManager.shared.currentUser,
+           store.restoreFromCloudProfile(profile) {
+            // Cloud profile has level/textbook → onboarding complete (RootView will switch)
+            return
+        }
+        // No cloud data — advance to level select so user can pick
+        coordinator.goNext()
+    }
+
     @ViewBuilder
     private var stepView: some View {
         switch coordinator.currentStep {
@@ -262,6 +322,8 @@ struct OnboardingFlowView: View {
             OnboardingWelcomeView {
                 AnalyticsService.shared.trackOnboardingStep("welcome")
                 coordinator.goNext()
+            } onLogin: {
+                showEmailLogin = true
             }
 
         case .levelSelect:
@@ -271,9 +333,12 @@ struct OnboardingFlowView: View {
                     store.updateSelectedLevel(level)
                     AnalyticsService.shared.trackOnboardingLevelSelected(level.rawValue)
                 }
-                coordinator.goNext()
-            } onSkipTest: {
-                coordinator.skipTest(store: store)
+                // If this is the last step (textbook auto-selected), complete onboarding
+                if coordinator.isLastStep {
+                    coordinator.skipTest(store: store)
+                } else {
+                    coordinator.goNext()
+                }
             }
 
         case .textbookSelect:
@@ -283,8 +348,7 @@ struct OnboardingFlowView: View {
                     store.updateSelectedTextbook(textbook)
                     AnalyticsService.shared.trackOnboardingTextbookSelected(textbook.rawValue)
                 }
-                coordinator.goNext()
-            } onSkipTest: {
+                // Textbook is always the last step — complete onboarding
                 coordinator.skipTest(store: store)
             }
 
@@ -328,48 +392,88 @@ struct OnboardingFlowView: View {
 // MARK: - Welcome
 
 struct OnboardingWelcomeView: View {
-    @State private var index: Int = 0
     let onContinue: () -> Void
+    let onLogin: () -> Void
 
     var body: some View {
-        VStack(spacing: 24) {
-            TabView(selection: $index) {
-                ForEach(Array(WelcomePage.pages.enumerated()), id: \ .offset) { idx, page in
-                    VStack(spacing: 18) {
-                        Circle()
-                            .fill(page.color.opacity(0.15))
-                            .frame(width: 120, height: 120)
-                            .overlay(
-                                Image(systemName: page.icon)
-                                    .font(.system(size: 48, weight: .bold))
-                                    .foregroundColor(page.color)
-                            )
-                        Text(page.title)
-                            .font(.system(size: 26, weight: .bold))
-                        Text(page.body)
-                            .font(.system(size: 16, weight: .regular))
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .tag(idx)
-                    .padding(.top, 20)
+        VStack(spacing: 0) {
+            Spacer()
+
+            // Hero branding
+            VStack(spacing: 14) {
+                Text("🦭")
+                    .font(.system(size: 88))
+                    .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
+                Text("海豹英语")
+                    .font(.system(size: 34, weight: .black, design: .rounded))
+                    .foregroundColor(.primary)
+                Text("让英语学习更轻松")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer().frame(height: 44)
+
+            // Feature highlights
+            VStack(spacing: 14) {
+                WelcomeFeatureRow(icon: "sparkles", color: .orange, text: "AI 智能出题，个性化练习")
+                WelcomeFeatureRow(icon: "book.closed.fill", color: .blue, text: "同步课本教材，紧跟学校进度")
+                WelcomeFeatureRow(icon: "brain.head.profile", color: .purple, text: "科学记忆算法，学了不忘")
+            }
+            .padding(.horizontal, 4)
+
+            Spacer()
+
+            // CTA Buttons
+            VStack(spacing: 12) {
+                Button(action: onContinue) {
+                    Text("开始学习")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(
+                            LinearGradient(colors: [Color.orange, Color(red: 1.0, green: 0.3, blue: 0.2)],
+                                           startPoint: .leading, endPoint: .trailing)
+                        )
+                        .cornerRadius(16)
+                        .shadow(color: Color.orange.opacity(0.3), radius: 8, y: 4)
+                }
+
+                Button(action: onLogin) {
+                    Text("注册 / 登录")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(Color(white: 0.18))
+                    .cornerRadius(16)
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .frame(height: 360)
+            .padding(.bottom, 12)
+        }
+    }
+}
 
-            Button(action: onContinue) {
-                Text("开始定级")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-                    .background(
-                        LinearGradient(colors: [Color.orange, Color.red],
-                                       startPoint: .leading, endPoint: .trailing)
-                    )
-                    .cornerRadius(14)
-            }
+// MARK: - Welcome Feature Row
+
+private struct WelcomeFeatureRow: View {
+    let icon: String
+    let color: Color
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(color)
+                .frame(width: 36, height: 36)
+                .background(color.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            Text(text)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(.primary)
+            Spacer()
         }
     }
 }
@@ -379,7 +483,6 @@ struct OnboardingWelcomeView: View {
 struct LevelSelectView: View {
     @ObservedObject var coordinator: OnboardingCoordinator
     let onContinue: () -> Void
-    let onSkipTest: () -> Void
 
     @State private var showSemesterSheet = false
 
@@ -445,15 +548,6 @@ struct LevelSelectView: View {
                         .cornerRadius(14)
                 }
                 .disabled(!canContinue)
-
-                // "跳过测试" 只在这是测试前最后一页时显示
-                if coordinator.isLastBeforeTest && canContinue {
-                    Button(action: onSkipTest) {
-                        Text("跳过测试，直接开始学习")
-                            .font(.system(size: 14, weight: .regular))
-                            .foregroundColor(.secondary)
-                    }
-                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -567,7 +661,6 @@ struct SemesterPill: View {
 struct TextbookSelectView: View {
     @ObservedObject var coordinator: OnboardingCoordinator
     let onContinue: () -> Void
-    let onSkipTest: () -> Void
 
     private var draft: OnboardingDraft { coordinator.draft }
 
@@ -615,7 +708,7 @@ struct TextbookSelectView: View {
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 10) {
                 Button(action: onContinue) {
-                    Text("下一步")
+                    Text("开始学习")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -624,15 +717,6 @@ struct TextbookSelectView: View {
                         .cornerRadius(14)
                 }
                 .disabled(draft.selectedTextbook == nil)
-
-                // 这里一定是测试前最后一页（textbook 存在 = 至少2个选项）
-                if draft.selectedTextbook != nil {
-                    Button(action: onSkipTest) {
-                        Text("跳过测试，直接开始学习")
-                            .font(.system(size: 14, weight: .regular))
-                            .foregroundColor(.secondary)
-                    }
-                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)

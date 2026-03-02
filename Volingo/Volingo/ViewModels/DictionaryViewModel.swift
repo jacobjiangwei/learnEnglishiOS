@@ -86,7 +86,7 @@ class DictionaryViewModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    if case APIServiceError.httpError(let code, _) = error, code == 404 {
+                    if case APIServiceError.httpError(let code, _, _) = error, code == 404 {
                         self.errorMessage = "找不到单词「\(query)」，请检查拼写是否正确"
                     } else {
                         self.errorMessage = error.localizedDescription

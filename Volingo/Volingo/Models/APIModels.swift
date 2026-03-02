@@ -9,16 +9,16 @@ import Foundation
 
 // MARK: - 通用错误
 
-/// 兼容旧格式 {"error":"..."} 和 RFC 7807 ProblemDetails {"title":"...","detail":"...","status":400}
+/// RFC 7807 ProblemDetails: {"title":"...","detail":"...","status":400,"code":"..."}
 struct APIError: Codable {
-    let error: String?       // 旧格式
-    let title: String?       // RFC 7807
-    let detail: String?      // RFC 7807
-    let status: Int?         // RFC 7807
+    let title: String?
+    let detail: String?
+    let status: Int?
+    let code: String?
 
     /// 提取可读错误消息
     var message: String {
-        detail ?? error ?? title ?? "未知错误"
+        detail ?? title ?? "未知错误"
     }
 }
 

@@ -36,10 +36,97 @@ struct ProfileView: View {
     @EnvironmentObject private var onboardingStore: UserStateStore
     @StateObject private var statsVM = ProfileStatsViewModel()
     @State private var pendingAction: ProfileAction? = nil
+    @State private var showBindEmail = false
+    @ObservedObject private var authManager = AuthManager.shared
 
     var body: some View {
         NavigationView {
             List {
+                // MARK: 账号 — 放在最上面
+                Section(header: Text("账号")) {
+                    if let user = authManager.currentUser,
+                       user.isEmailUser,
+                       let email = user.email {
+                        Button {
+                            showBindEmail = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "envelope.fill")
+                                    .foregroundColor(.blue)
+                                Text(email)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Image(systemName: "checkmark.seal.fill")
+                                    .foregroundColor(.green)
+                                    .font(.system(size: 14))
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    } else {
+                        Button {
+                            showBindEmail = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "envelope.badge.plus")
+                                    .foregroundColor(.blue)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("绑定邮箱")
+                                        .foregroundColor(.primary)
+                                    Text("绑定后可在其他设备登录")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                // MARK: 当前学习目标
+                Section(header: Text("当前学习目标")) {
+                    HStack {
+                        Text("等级")
+                        Spacer()
+                        Text(currentLevelLabel)
+                            .foregroundColor(.secondary)
+                    }
+
+                    HStack {
+                        Text("教材")
+                        Spacer()
+                        Text(currentTextbookLabel)
+                            .foregroundColor(.secondary)
+                    }
+
+                    if onboardingStore.userState.needsSemester {
+                        HStack {
+                            Text("学期")
+                            Spacer()
+                            Text(currentSemesterLabel)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    if let score = onboardingStore.userState.lastAssessmentScore {
+                        HStack {
+                            Text("最近测评")
+                            Spacer()
+                            let pct = score * 100
+                            Text("正确率 \(Int(pct))%")
+                                .foregroundColor(accuracyColor(for: pct))
+                        }
+                    }
+
+                    Button("修改学习目标") {
+                        pendingAction = .modifyGoal
+                    }
+                }
+
                 // MARK: 学习概况 — 卡片风格
                 Section(header: Text("学习概况")) {
                     if statsVM.isLoading {
@@ -94,7 +181,7 @@ struct ProfileView: View {
                     }
                 }
 
-                // MARK: 当前学习目标
+                // MARK: 历史记录
                 Section(header: Text("历史记录")) {
                     NavigationLink(destination: PracticeHistoryView()) {
                         HStack {
@@ -109,63 +196,18 @@ struct ProfileView: View {
                     }
                 }
 
-                Section(header: Text("当前学习目标")) {
-                    HStack {
-                        Text("已定级")
-                        Spacer()
-                        Text(currentLevelLabel)
-                            .foregroundColor(.secondary)
-                    }
-
-                    HStack {
-                        Text("教材")
-                        Spacer()
-                        Text(currentTextbookLabel)
-                            .foregroundColor(.secondary)
-                    }
-
-                    if onboardingStore.userState.needsSemester {
-                        HStack {
-                            Text("学期")
-                            Spacer()
-                            Text(currentSemesterLabel)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-
-                    if let score = onboardingStore.userState.lastAssessmentScore {
-                        HStack {
-                            Text("最近测评")
-                            Spacer()
-                            let pct = score * 100
-                            Text("正确率 \(Int(pct))%")
-                                .foregroundColor(accuracyColor(for: pct))
-                        }
-                    }
-                }
-
-                Section(header: Text("学习设置")) {
-                    Button("修改学习目标") {
-                        pendingAction = .modifyGoal
-                    }
-
-                    Button("重新定级测试") {
-                        pendingAction = .retest
-                    }
-                    .foregroundColor(.orange)
-
+                // MARK: 设置
+                Section(header: Text("设置")) {
                     Button("重新完整设置") {
                         pendingAction = .fullReset
                     }
                     .foregroundColor(.red)
                 }
-
-                Section(header: Text("账号")) {
-                    Text("游客模式")
-                        .foregroundColor(.secondary)
-                }
             }
             .navigationTitle("我的")
+            .sheet(isPresented: $showBindEmail) {
+                BindEmailView()
+            }
             .onAppear {
                 statsVM.load()
             }
@@ -177,18 +219,9 @@ struct ProfileView: View {
                 case .modifyGoal:
                     return Alert(
                         title: Text("修改学习目标?"),
-                        message: Text("将重新选择等级与教材，不会进入测试。"),
+                        message: Text("将重新选择等级与教材。"),
                         primaryButton: .destructive(Text("确认"), action: {
                             onboardingStore.startModifyGoal()
-                        }),
-                        secondaryButton: .cancel(Text("取消"))
-                    )
-                case .retest:
-                    return Alert(
-                        title: Text("重新定级测试?"),
-                        message: Text("将保留教材选择，并直接进入测试。"),
-                        primaryButton: .destructive(Text("确认"), action: {
-                            onboardingStore.startRetest(keepTextbook: true)
                         }),
                         secondaryButton: .cancel(Text("取消"))
                     )
@@ -287,7 +320,6 @@ private struct StatCell: View {
 
 private enum ProfileAction: String, Identifiable {
     case modifyGoal
-    case retest
     case fullReset
 
     var id: String { rawValue }

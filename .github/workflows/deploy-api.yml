@@ -44,4 +44,8 @@ jobs:
             --name ${{ env.CONTAINER_APP_NAME }} \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --image ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            --set-env-vars "ConnectionStrings__cosmos=${{ secrets.COSMOS_CONNECTION_STRING }}"
+            --set-env-vars \
+              "ConnectionStrings__cosmos=${{ secrets.COSMOS_CONNECTION_STRING }}" \
+              "DocumentIntelligence__Key=${{ secrets.DOC_INTELLIGENCE_KEY }}" \
+              "AzureOpenAI__Key=${{ secrets.AZURE_OPENAI_KEY }}" \
+              "Email__ConnectionString=${{ secrets.EMAIL_CONNECTION_STRING }}"

@@ -1,16 +1,21 @@
 @host = http://localhost:5174
 # 切换到生产环境测试：注释上面一行，取消注释下面一行
 # @host = https://api.haibaoenglishlearning.com
-@deviceId = test-device-001
 @textbookCode = juniorPEP-7a
+# 登录后将 access token 粘贴到这里
+@token = REPLACE_WITH_ACCESS_TOKEN
 
 ### ══════════════════════════════════════
 ### Auth 认证相关
 ### ══════════════════════════════════════
 
-### A1. [DEV] 测试登录（跳过 Apple 验证，仅开发环境可用）
-### 返回 accessToken + refreshToken，复制到下面的 @token 变量
-POST {{host}}/api/v1/auth/dev-login
+### A1. 设备登录（获取 token）
+POST {{host}}/api/v1/auth/device
+Content-Type: application/json
+
+{
+    "deviceId": "test-device-001"
+}
 
 ### A2. 刷新 Token（替换为实际 refreshToken）
 POST {{host}}/api/v1/auth/refresh
@@ -22,11 +27,11 @@ Content-Type: application/json
 
 ### A3. 获取当前用户信息（需要 Bearer token）
 GET {{host}}/api/v1/auth/me
-Authorization: Bearer REPLACE_WITH_ACCESS_TOKEN
+Authorization: Bearer {{token}}
 
 ### A4. 登出（吊销所有 Refresh Token）
 POST {{host}}/api/v1/auth/logout
-Authorization: Bearer REPLACE_WITH_ACCESS_TOKEN
+Authorization: Bearer {{token}}
 
 ### ══════════════════════════════════════
 ### 练习题目
@@ -37,65 +42,64 @@ Authorization: Bearer REPLACE_WITH_ACCESS_TOKEN
 ### ──────────────────────────────────────
 
 GET {{host}}/api/v1/practice/questions?questionType=multipleChoice&textbookCode={{textbookCode}}&count=3
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### 1b. 获取练习题目 — 完形填空
 GET {{host}}/api/v1/practice/questions?questionType=cloze&textbookCode={{textbookCode}}&count=3
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### 1c. 获取练习题目 — 阅读理解
 GET {{host}}/api/v1/practice/questions?questionType=reading&textbookCode={{textbookCode}}&count=2
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### 1d. 获取练习题目 — 翻译
 GET {{host}}/api/v1/practice/questions?questionType=translation&textbookCode={{textbookCode}}&count=3
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### 1e. 获取练习题目 — 句子改写
 GET {{host}}/api/v1/practice/questions?questionType=rewriting&textbookCode={{textbookCode}}&count=3
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### 1f. 获取练习题目 — 纠错
 GET {{host}}/api/v1/practice/questions?questionType=errorCorrection&textbookCode={{textbookCode}}&count=3
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### 1g. 获取练习题目 — 句子排序
 GET {{host}}/api/v1/practice/questions?questionType=sentenceOrdering&textbookCode={{textbookCode}}&count=3
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### 1h. 获取练习题目 — 听力
 GET {{host}}/api/v1/practice/questions?questionType=listening&textbookCode={{textbookCode}}&count=3
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### 1i. 获取练习题目 — 词汇
 GET {{host}}/api/v1/practice/questions?questionType=vocabulary&textbookCode={{textbookCode}}&count=3
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### 1j. 获取练习题目 — 语法
 GET {{host}}/api/v1/practice/questions?questionType=grammar&textbookCode={{textbookCode}}&count=3
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### 1k. 获取练习题目 — 口语
 GET {{host}}/api/v1/practice/questions?questionType=speaking&textbookCode={{textbookCode}}&count=3
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### 1l. 获取练习题目 — 写作
 GET {{host}}/api/v1/practice/questions?questionType=writing&textbookCode={{textbookCode}}&count=3
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### ──────────────────────────────────────
 ### 2. 获取今日推荐包
 ### ──────────────────────────────────────
 
 GET {{host}}/api/v1/practice/today-package?textbookCode={{textbookCode}}
-X-Device-Id: {{deviceId}}
 
 ### ──────────────────────────────────────
 ### 3. 批量提交答题结果
 ### ──────────────────────────────────────
 
 POST {{host}}/api/v1/practice/submit
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
@@ -111,21 +115,20 @@ Content-Type: application/json
 ### ──────────────────────────────────────
 
 GET {{host}}/api/v1/user/stats?days=7
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### ──────────────────────────────────────
 ### 4b. 学习统计（近30天）
 ### ──────────────────────────────────────
 
 GET {{host}}/api/v1/user/stats?days=30
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### ──────────────────────────────────────
 ### 5. 举报题目
 ### ──────────────────────────────────────
 
 POST {{host}}/api/v1/practice/report
-X-Device-Id: {{deviceId}}
 Content-Type: application/json
 
 {
@@ -139,7 +142,7 @@ Content-Type: application/json
 ### ──────────────────────────────────────
 
 POST {{host}}/api/v1/wordbook/add
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
@@ -153,7 +156,7 @@ Content-Type: application/json
 ### ──────────────────────────────────────
 
 POST {{host}}/api/v1/wordbook/add
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 Content-Type: application/json
 
 {
@@ -167,17 +170,17 @@ Content-Type: application/json
 ### ──────────────────────────────────────
 
 GET {{host}}/api/v1/wordbook/list
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### ──────────────────────────────────────
 ### 8. 删除生词（替换为实际 wordId）
 ### ──────────────────────────────────────
 
 DELETE {{host}}/api/v1/wordbook/REPLACE_WITH_WORD_ID
-X-Device-Id: {{deviceId}}
+Authorization: Bearer {{token}}
 
 ### ──────────────────────────────────────
-### 9. 缺少 X-Device-Id 的请求（应返回 400）
+### 9. 未登录请求（应返回 401）
 ### ──────────────────────────────────────
 
 GET {{host}}/api/v1/practice/questions?questionType=multipleChoice&textbookCode=juniorPEP-7a&count=2

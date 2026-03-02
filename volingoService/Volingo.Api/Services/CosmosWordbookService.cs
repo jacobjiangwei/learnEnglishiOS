@@ -6,7 +6,7 @@ namespace Volingo.Api.Services;
 
 /// <summary>
 /// Cosmos DB implementation of <see cref="IWordbookService"/>.
-/// Container: wordbook, partition key: /deviceId
+/// Container: wordbook, partition key: /userId
 /// </summary>
 public class CosmosWordbookService : IWordbookService
 {
@@ -20,12 +20,12 @@ public class CosmosWordbookService : IWordbookService
         _logger = logger;
     }
 
-    public async Task<WordbookEntry> AddWordAsync(string deviceId, WordbookAddRequest request)
+    public async Task<WordbookEntry> AddWordAsync(string userId, WordbookAddRequest request)
     {
         // Check for duplicate
         var query = _container.GetItemLinqQueryable<WordbookDocument>(
-                requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(deviceId) })
-            .Where(w => w.DeviceId == deviceId && w.Word == request.Word)
+                requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(userId) })
+            .Where(w => w.UserId == userId && w.Word == request.Word)
             .ToFeedIterator();
 
         if (query.HasMoreResults)
@@ -39,22 +39,22 @@ public class CosmosWordbookService : IWordbookService
         var doc = new WordbookDocument
         {
             Id = Guid.NewGuid().ToString(),
-            DeviceId = deviceId,
+            UserId = userId,
             Word = request.Word,
             Phonetic = request.Phonetic,
             Definitions = request.Definitions,
             AddedAt = DateTime.UtcNow
         };
 
-        await _container.CreateItemAsync(doc, new PartitionKey(deviceId));
+        await _container.CreateItemAsync(doc, new PartitionKey(userId));
         return ToEntry(doc);
     }
 
-    public async Task<bool> DeleteWordAsync(string deviceId, string wordId)
+    public async Task<bool> DeleteWordAsync(string userId, string wordId)
     {
         try
         {
-            await _container.DeleteItemAsync<WordbookDocument>(wordId, new PartitionKey(deviceId));
+            await _container.DeleteItemAsync<WordbookDocument>(wordId, new PartitionKey(userId));
             return true;
         }
         catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -63,11 +63,11 @@ public class CosmosWordbookService : IWordbookService
         }
     }
 
-    public async Task<WordbookListResponse> GetWordbookAsync(string deviceId)
+    public async Task<WordbookListResponse> GetWordbookAsync(string userId)
     {
         var query = _container.GetItemLinqQueryable<WordbookDocument>(
-                requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(deviceId) })
-            .Where(w => w.DeviceId == deviceId)
+                requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(userId) })
+            .Where(w => w.UserId == userId)
             .OrderByDescending(w => w.AddedAt)
             .ToFeedIterator();
 

@@ -6,7 +6,7 @@ namespace Volingo.Api.Services;
 
 /// <summary>
 /// Cosmos DB backed implementation of ISubmitResultService.
-/// Container: completions, partition key: /deviceId
+/// Container: completions, partition key: /userId
 /// </summary>
 public class CosmosSubmitResultService : ISubmitResultService
 {
@@ -20,14 +20,14 @@ public class CosmosSubmitResultService : ISubmitResultService
         _logger = logger;
     }
 
-    public async Task SubmitAsync(string deviceId, SubmitRequest request)
+    public async Task SubmitAsync(string userId, SubmitRequest request)
     {
         foreach (var item in request.Results)
         {
             var doc = new CompletionDocument
             {
-                Id = $"{deviceId}_{item.QuestionId}",
-                DeviceId = deviceId,
+                Id = $"{userId}_{item.QuestionId}",
+                UserId = userId,
                 QuestionId = item.QuestionId,
                 QuestionType = item.QuestionType,
                 IsCorrect = item.IsCorrect,
@@ -36,23 +36,23 @@ public class CosmosSubmitResultService : ISubmitResultService
 
             try
             {
-                await _container.UpsertItemAsync(doc, new PartitionKey(deviceId));
+                await _container.UpsertItemAsync(doc, new PartitionKey(userId));
             }
             catch (CosmosException ex)
             {
-                _logger.LogWarning(ex, "Failed to upsert completion {QuestionId} for device {DeviceId}",
-                    item.QuestionId, deviceId);
+                _logger.LogWarning(ex, "Failed to upsert completion {QuestionId} for user {UserId}",
+                    item.QuestionId, userId);
             }
         }
     }
 
-    public async Task<StatsResponse> GetStatsAsync(string deviceId, int days)
+    public async Task<StatsResponse> GetStatsAsync(string userId, int days)
     {
         var cutoff = DateTime.UtcNow.Date.AddDays(-days);
 
         var query = _container.GetItemLinqQueryable<CompletionDocument>(
-                requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(deviceId) })
-            .Where(c => c.DeviceId == deviceId)
+                requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(userId) })
+            .Where(c => c.UserId == userId)
             .ToFeedIterator();
 
         var allRecords = new List<CompletionDocument>();
@@ -90,15 +90,15 @@ public class CosmosSubmitResultService : ISubmitResultService
         return new StatsResponse(totalCompleted, totalCorrect, current, longest, dailyActivity, questionTypeStats);
     }
 
-    public async Task<HashSet<string>> GetCompletedIdsAsync(string deviceId)
+    public async Task<HashSet<string>> GetCompletedIdsAsync(string userId)
     {
         // Project only questionId for efficiency
-        var query = new QueryDefinition("SELECT c.questionId FROM c WHERE c.deviceId = @did")
-            .WithParameter("@did", deviceId);
+        var query = new QueryDefinition("SELECT c.questionId FROM c WHERE c.userId = @uid")
+            .WithParameter("@uid", userId);
 
         using var iterator = _container.GetItemQueryIterator<CompletionDocument>(
             query,
-            requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(deviceId) });
+            requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(userId) });
 
         var ids = new HashSet<string>();
         while (iterator.HasMoreResults)

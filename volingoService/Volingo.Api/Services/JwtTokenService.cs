@@ -15,14 +15,14 @@ public class JwtTokenService : IJwtTokenService
     private readonly RsaSecurityKey _signingKey;
     private readonly string _issuer;
     private readonly string _audience;
-    private readonly int _accessTokenExpiryDays;
+    private readonly int _accessTokenExpirySeconds;
 
     public JwtTokenService(RsaSecurityKey signingKey, IConfiguration configuration)
     {
         _signingKey = signingKey;
         _issuer = configuration["Jwt:Issuer"] ?? "volingo";
         _audience = configuration["Jwt:Audience"] ?? "volingo-api";
-        _accessTokenExpiryDays = int.TryParse(configuration["Jwt:AccessTokenExpiryDays"], out var d) ? d : 30;
+        _accessTokenExpirySeconds = int.TryParse(configuration["Jwt:AccessTokenExpirySeconds"], out var s) ? s : 2592000; // default 30 days
     }
 
     public string GenerateAccessToken(string userId, string? deviceId = null, string role = "user")
@@ -44,7 +44,7 @@ public class JwtTokenService : IJwtTokenService
             audience: _audience,
             claims: claims,
             notBefore: DateTime.UtcNow,
-            expires: DateTime.UtcNow.AddDays(_accessTokenExpiryDays),
+            expires: DateTime.UtcNow.AddSeconds(_accessTokenExpirySeconds),
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);

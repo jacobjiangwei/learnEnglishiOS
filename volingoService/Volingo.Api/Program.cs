@@ -89,6 +89,17 @@ builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 
+// ── Email sender ──
+if (builder.Environment.IsDevelopment()
+    && string.IsNullOrEmpty(builder.Configuration["Email:ConnectionString"]))
+{
+    builder.Services.AddSingleton<IEmailSender, ConsoleEmailSender>();
+}
+else
+{
+    builder.Services.AddSingleton<IEmailSender, AcsEmailSender>();
+}
+
 // JSON serialization — HttpJsonOptions defaults to JsonSerializerDefaults.Web
 // (camelCase + case-insensitive read). We add further customizations:
 builder.Services.ConfigureHttpJsonOptions(options =>
