@@ -36,9 +36,11 @@ struct AuthUserProfile: Codable {
     let displayName: String?
     let email: String?
     let hasEmailIdentity: Bool
-    let level: String?
-    let textbookCode: String?
+    let onboardingCompleted: Bool
+    let grade: String?
+    let publisher: String?
     let semester: String?
+    let currentUnit: Int?
     
     var isEmailUser: Bool { hasEmailIdentity }
 }
@@ -51,62 +53,57 @@ final class AuthManager: ObservableObject {
     
     @Published private(set) var isAuthenticated = false
     @Published private(set) var currentUser: AuthUserProfile?
-    @Published private(set) var isLoading = false
+    @Published private(set) var isLoading = true   // start true — prevents ContentView until signIn finishes
     @Published var errorMessage: String?
     
     private let tokenStore = AuthTokenStore.shared
     
     private init() {}
     
-    // MARK: - Auto Sign-In (called on app launch)
+    // MARK: - 启动登录
     
-    /// Checks existing tokens or auto-registers with device ID.
-    /// If no tokens exist, does NOT auto-create a user — onboarding will handle that.
-    func autoSignIn() async {
+    /// App 启动时调用。
+    /// 有效 token → 直接认证；过期或 < 7天 → refresh；无 token → 自动创建设备用户。
+    func signIn() async {
         isLoading = true
         defer { isLoading = false }
         
-        let hasAccessToken = tokenStore.accessToken != nil
-        let hasRefreshToken = tokenStore.refreshToken != nil
-        let isExpired = tokenStore.isAccessTokenExpired()
-        print("[Auth] 🔍 autoSignIn: hasAccessToken=\(hasAccessToken), hasRefreshToken=\(hasRefreshToken), isExpired=\(isExpired)")
-        
-        // 1. Have a valid access token?
-        if hasAccessToken && !isExpired {
-            await fetchCurrentUser()
-            if currentUser != nil {
+        // 1. AT 有效且剩余 > 7 天 → 直接登录，不浪费网络请求
+        if tokenStore.accessToken != nil && !tokenStore.isAccessTokenExpired() {
+            let remainingDays = tokenStore.accessTokenRemainingDays() ?? 0
+            if remainingDays > 7 {
                 isAuthenticated = true
-                print("[Auth] ✅ 已登录 userId=\(currentUser?.id ?? "unknown")")
-                
-                // Proactively refresh if access token expires within 7 days
-                if let remaining = tokenStore.accessTokenRemainingDays(), remaining < 7 {
-                    print("[Auth] ⏳ Access token 剩余 \(remaining) 天，主动刷新")
-                    try? await refreshToken()
-                }
+                print("[Auth] ✅ Token 有效（剩余 \(remainingDays) 天），已登录")
                 return
-            } else {
-                // Token valid but user not found (DB wiped or server down) → re-login
-                print("[Auth] ⚠️ Token 有效但用户不存在，清除旧 token 重新登录")
-                tokenStore.clearAll()
             }
+            // AT valid but < 7 days → proactive refresh below
+            print("[Auth] ⚠️ Token 有效但剩余仅 \(remainingDays) 天，主动刷新")
         }
         
-        // 2. Access token expired but have a refresh token? Refresh it.
-        if hasRefreshToken {
-            print("[Auth] 🔄 Access token 已过期，尝试用 refresh token 换新…")
+        // 2. AT 过期/缺失/即将过期，有 RT → 刷新（返回值自带 user profile）
+        if tokenStore.refreshToken != nil {
             do {
                 try await refreshToken()
-                print("[Auth] ✅ Token 刷新成功 userId=\(currentUser?.id ?? "unknown")")
                 return
             } catch {
-                print("[Auth] ❌ Token 刷新失败，清除登录态: \(error)")
+                print("[Auth] ❌ Token 刷新失败: \(error)")
                 tokenStore.clearAll()
             }
         }
         
-        // 3. No tokens — don't auto-create user.
-        //    Let onboarding complete first, then call createDeviceUser().
-        print("[Auth] 🆕 无 token，等待 onboarding 完成后创建用户")
+        // 3. 无有效 token，邮箱用户 → 等待手动重新登录
+        if tokenStore.wasEmailUser {
+            print("[Auth] 🔒 邮箱用户 token 失效，等待重新登录")
+            isAuthenticated = false
+            return
+        }
+        
+        // 4. 设备用户 / 首次启动 → 自动注册
+        do {
+            try await createDeviceUser()
+        } catch {
+            print("[Auth] ❌ 创建设备用户失败: \(error)")
+        }
     }
     
     // MARK: - Device Sign-In (called after onboarding completes)
@@ -120,7 +117,10 @@ final class AuthManager: ObservableObject {
         currentUser = response.user
         isAuthenticated = true
         
-        print("[Auth] ✅ 设备用户创建成功 userId=\(response.user.id)")
+        // If the device identity is linked to an email user, mark that
+        tokenStore.wasEmailUser = response.user.hasEmailIdentity
+        
+        print("[Auth] ✅ 设备用户创建/恢复成功 userId=\(response.user.id), isEmailUser=\(response.user.hasEmailIdentity)")
     }
     
     // MARK: - Token Lifecycle
@@ -134,6 +134,7 @@ final class AuthManager: ObservableObject {
         tokenStore.saveTokens(accessToken: response.accessToken, refreshToken: response.refreshToken)
         isAuthenticated = true
         currentUser = response.user
+        tokenStore.wasEmailUser = response.user.hasEmailIdentity
         print("[Auth] ✅ Token 已更新 userId=\(response.user.id)")
     }
     
@@ -143,6 +144,7 @@ final class AuthManager: ObservableObject {
             try? await APIService.shared.logout()
         }
         tokenStore.clearAll()
+        tokenStore.clearEmailUserFlag()
         isAuthenticated = false
         currentUser = nil
         print("[Auth] ✅ 已退出登录")
@@ -160,6 +162,7 @@ final class AuthManager: ObservableObject {
         tokenStore.saveTokens(accessToken: response.accessToken, refreshToken: response.refreshToken)
         currentUser = response.user
         isAuthenticated = true
+        tokenStore.wasEmailUser = true
         print("[Auth] ✅ 邮箱验证码登录成功 userId=\(response.user.id)")
     }
 
@@ -175,6 +178,7 @@ final class AuthManager: ObservableObject {
         tokenStore.saveTokens(accessToken: response.accessToken, refreshToken: response.refreshToken)
         currentUser = response.user
         isAuthenticated = true
+        tokenStore.wasEmailUser = true
         print("[Auth] ✅ 邮箱绑定成功 userId=\(response.user.id)")
     }
 
@@ -182,26 +186,28 @@ final class AuthManager: ObservableObject {
 
     func emailLogout() async throws {
         try await APIService.shared.emailLogout()
-        // Clear current tokens & re-login as anonymous device user
+        // Clear tokens + email flag → re-login as anonymous device user
         tokenStore.clearAll()
+        tokenStore.clearEmailUserFlag()
         try await createDeviceUser()
         print("[Auth] ✅ 已退出邮箱登录，恢复匿名用户")
     }
 
     // MARK: - Update Profile
 
-    func updateProfile(level: String, textbookCode: String, semester: String?) async throws {
-        try await APIService.shared.updateProfile(level: level, textbookCode: textbookCode, semester: semester)
+    func updateProfile(grade: String, publisher: String?, semester: String?, currentUnit: Int? = 1, onboardingCompleted: Bool? = nil) async throws {
+        try await APIService.shared.updateProfile(grade: grade, publisher: publisher, semester: semester, currentUnit: currentUnit, onboardingCompleted: onboardingCompleted)
         await fetchCurrentUser()
         print("[Auth] ✅ 用户资料已更新")
     }
 
-    // MARK: - Private
+    // MARK: - Fetch Profile
     
-    private func fetchCurrentUser() async {
+    func fetchCurrentUser() async {
         do {
             let profile = try await APIService.shared.fetchCurrentUser()
             currentUser = profile
+            tokenStore.wasEmailUser = profile.hasEmailIdentity
         } catch {
             print("[Auth] ⚠️ 获取用户信息失败: \(error)")
         }

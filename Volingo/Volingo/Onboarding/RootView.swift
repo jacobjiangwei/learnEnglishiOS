@@ -14,24 +14,47 @@ struct RootView: View {
     var body: some View {
         Group {
             if authManager.isLoading {
-                // Auto sign-in in progress
                 ProgressView("正在初始化…")
+            } else if !authManager.isAuthenticated && store.userState.isOnboardingCompleted {
+                // Email user token lost → prompt re-login
+                EmailLoginView {
+                    Task { await restoreFromCloudIfNeeded() }
+                }
             } else if store.userState.isOnboardingCompleted {
-                // Onboarding done → main app
                 ContentView()
                     .environmentObject(store)
             } else {
-                // Onboarding not done
                 OnboardingFlowView()
                     .environmentObject(store)
             }
         }
         .task {
-            await authManager.autoSignIn()
+            // signIn() handles all auth paths:
+            //   - Token valid (>7d) → isAuthenticated=true, currentUser may be nil (trust local)
+            //   - Token refreshed  → isAuthenticated=true, currentUser populated from response
+            //   - Device sign-in   → isAuthenticated=true, currentUser populated from response
+            //   - Email user lost  → isAuthenticated=false, wait for manual re-login
+            await authManager.signIn()
+
+            // Only case we need cloud data: local has no onboarding, but cloud might.
+            // This handles new device / reinstall for email users.
+            await restoreFromCloudIfNeeded()
         }
         .onAppear {
             AnalyticsService.shared.trackAppLaunch(isReturningUser: store.userState.isOnboardingCompleted)
         }
+    }
+
+    /// If local has no onboarding but signIn returned a profile with onboarding done → restore.
+    /// No extra network request needed — signIn already populated currentUser.
+    private func restoreFromCloudIfNeeded() async {
+        guard authManager.isAuthenticated,
+              !store.userState.isOnboardingCompleted,
+              let profile = authManager.currentUser,
+              profile.onboardingCompleted else { return }
+
+        let restored = store.restoreFromCloudProfile(profile)
+        print("[RootView] 从云端恢复 onboarding: \(restored ? "成功" : "失败")")
     }
 }
 

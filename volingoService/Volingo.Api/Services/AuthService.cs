@@ -77,7 +77,7 @@ public class AuthService : IAuthService
             var deviceIdentity = new DeviceIdentity
             {
                 Id = identityId, UserId = userId, DeviceId = request.DeviceId,
-                DeviceInfo = request.DeviceInfo, CreatedAt = DateTime.UtcNow, LastUsedAt = DateTime.UtcNow
+                DeviceInfo = request.DeviceInfo, Type = "anonymous", CreatedAt = DateTime.UtcNow, LastUsedAt = DateTime.UtcNow
             };
             await _identities.CreateItemAsync(deviceIdentity, new PartitionKey(deviceIdentity.Id));
 
@@ -158,10 +158,13 @@ public class AuthService : IAuthService
         var profile = await GetProfileAsync(userId)
             ?? throw new AuthException(AuthErrorCodes.UserNotFound, "User not found.");
 
-        if (request.Level is not null) profile.Level = request.Level;
-        if (request.TextbookCode is not null) profile.TextbookCode = request.TextbookCode;
+        if (request.Grade is not null) profile.Grade = request.Grade;
+        if (request.Publisher is not null) profile.Publisher = request.Publisher;
         if (request.Semester is not null) profile.Semester = request.Semester;
+        if (request.CurrentUnit is not null) profile.CurrentUnit = request.CurrentUnit;
         if (request.DisplayName is not null) profile.DisplayName = request.DisplayName;
+        if (request.OnboardingCompleted is not null) profile.OnboardingCompleted = request.OnboardingCompleted.Value;
+        profile.UpdatedAt = DateTime.UtcNow;
 
         await _userProfiles.UpsertItemAsync(profile, new PartitionKey(userId));
         _log.LogInformation("User {UserId} profile updated", userId);
@@ -210,57 +213,35 @@ public class AuthService : IAuthService
         var emailIdentityId = $"email:{verification.Email}";
         var existingEmailIdentity = await GetIdentityAsync<EmailIdentity>(emailIdentityId);
 
-        HBUserProfile targetProfile;
+        // Design rule: no complex merge — if email already belongs to another user, reject.
+        if (existingEmailIdentity is not null)
+            throw new AuthException(AuthErrorCodes.EmailAlreadyExists,
+                "This email is already associated with another account. Please login with email instead.");
 
-        if (existingEmailIdentity is not null && existingEmailIdentity.UserId != userId)
+        // Fresh email → create email identity for current user
+        var targetProfile = await GetProfileAsync(userId)
+            ?? throw new AuthException(AuthErrorCodes.UserNotFound, "User not found.");
+        targetProfile.Email = verification.Email;
+        targetProfile.HasEmailIdentity = true;
+        targetProfile.UpdatedAt = DateTime.UtcNow;
+        await _userProfiles.UpsertItemAsync(targetProfile, new PartitionKey(userId));
+
+        var emailIdentity = new EmailIdentity
         {
-            // Email belongs to another user → merge: move device identities to that user
-            targetProfile = await GetProfileAsync(existingEmailIdentity.UserId)
-                ?? throw new AuthException(AuthErrorCodes.UserNotFound, "Email user not found.");
+            Id = emailIdentityId, UserId = userId, Email = verification.Email,
+            Type = "email", Verified = true, CreatedAt = DateTime.UtcNow, LastUsedAt = DateTime.UtcNow
+        };
+        await _identities.UpsertItemAsync(emailIdentity, new PartitionKey(emailIdentity.Id));
 
-            await MoveDeviceIdentitiesAsync(userId, existingEmailIdentity.UserId);
-
-            // Update target user LastLoginAt
-            var targetUser = await GetUserByIdAsync(existingEmailIdentity.UserId);
-            if (targetUser is not null)
-            {
-                targetUser.LastLoginAt = DateTime.UtcNow;
-                await _users.UpsertItemAsync(targetUser, new PartitionKey(targetUser.Id));
-            }
-
-            // Clean up orphaned user + profile
-            try { await _users.DeleteItemAsync<HBUser>(userId, new PartitionKey(userId)); } catch { }
-            try { await _userProfiles.DeleteItemAsync<HBUserProfile>(userId, new PartitionKey(userId)); } catch { }
-
-            _log.LogInformation("Merge: user {Old} → {Target} via {Email}",
-                userId, existingEmailIdentity.UserId, verification.Email);
-        }
-        else
+        // Update LastLoginAt
+        var user = await GetUserByIdAsync(userId);
+        if (user is not null)
         {
-            // Fresh email → create email identity for current user
-            targetProfile = await GetProfileAsync(userId)
-                ?? throw new AuthException(AuthErrorCodes.UserNotFound, "User not found.");
-            targetProfile.Email = verification.Email;
-            targetProfile.HasEmailIdentity = true;
-            await _userProfiles.UpsertItemAsync(targetProfile, new PartitionKey(userId));
-
-            var emailIdentity = new EmailIdentity
-            {
-                Id = emailIdentityId, UserId = userId, Email = verification.Email,
-                CreatedAt = DateTime.UtcNow, LastUsedAt = DateTime.UtcNow
-            };
-            await _identities.UpsertItemAsync(emailIdentity, new PartitionKey(emailIdentity.Id));
-
-            // Update LastLoginAt
-            var user = await GetUserByIdAsync(userId);
-            if (user is not null)
-            {
-                user.LastLoginAt = DateTime.UtcNow;
-                await _users.UpsertItemAsync(user, new PartitionKey(user.Id));
-            }
-
-            _log.LogInformation("Email {Email} bound to user {UserId}", verification.Email, userId);
+            user.LastLoginAt = DateTime.UtcNow;
+            await _users.UpsertItemAsync(user, new PartitionKey(user.Id));
         }
+
+        _log.LogInformation("Email {Email} bound to user {UserId}", verification.Email, userId);
 
         await CleanupVerificationAsync(userId);
 
@@ -345,7 +326,7 @@ public class AuthService : IAuthService
             var newIdentity = new EmailIdentity
             {
                 Id = emailIdentityId, UserId = userId, Email = normalizedEmail,
-                CreatedAt = DateTime.UtcNow, LastUsedAt = DateTime.UtcNow
+                Type = "email", Verified = true, CreatedAt = DateTime.UtcNow, LastUsedAt = DateTime.UtcNow
             };
             await _identities.CreateItemAsync(newIdentity, new PartitionKey(newIdentity.Id));
 
@@ -362,7 +343,7 @@ public class AuthService : IAuthService
                 var newDevice = new DeviceIdentity
                 {
                     Id = deviceIdentityId, UserId = profile.Id, DeviceId = request.DeviceId,
-                    CreatedAt = DateTime.UtcNow, LastUsedAt = DateTime.UtcNow
+                    Type = "anonymous", CreatedAt = DateTime.UtcNow, LastUsedAt = DateTime.UtcNow
                 };
                 await _identities.CreateItemAsync(newDevice, new PartitionKey(newDevice.Id));
             }
@@ -402,6 +383,12 @@ public class AuthService : IAuthService
         var rtExpiry = int.TryParse(_config["Jwt:RefreshTokenExpirySeconds"], out var r) ? r : 31536000;
         var atExpiry = int.TryParse(_config["Jwt:AccessTokenExpirySeconds"], out var a) ? a : 2592000;
 
+        // Single session per device: revoke existing tokens for this device
+        if (deviceId is not null)
+        {
+            await RevokeTokensByDeviceAsync(profile.Id, deviceId);
+        }
+
         var rt = new RefreshToken
         {
             Id = $"rt_{Guid.NewGuid():N}", UserId = profile.Id,
@@ -414,8 +401,8 @@ public class AuthService : IAuthService
     }
 
     private static UserProfile ToProfile(HBUserProfile p)
-        => new(p.Id, p.DisplayName, p.Email, p.HasEmailIdentity,
-               p.Level, p.TextbookCode, p.Semester);
+        => new(p.Id, p.DisplayName, p.Email, p.HasEmailIdentity, p.OnboardingCompleted,
+               p.Grade, p.Publisher, p.Semester, p.CurrentUnit);
 
     // ── Identity helpers ──
 
@@ -523,6 +510,28 @@ public class AuthService : IAuthService
     }
 
     // ── Refresh token helpers ──
+
+    /// <summary>
+    /// Revoke all active refresh tokens for a specific device (single session per device).
+    /// </summary>
+    private async Task RevokeTokensByDeviceAsync(string userId, string deviceId)
+    {
+        var query = _refreshTokens.GetItemLinqQueryable<RefreshToken>(
+                requestOptions: new QueryRequestOptions { PartitionKey = new PartitionKey(userId) })
+            .Where(t => t.UserId == userId && t.DeviceId == deviceId && !t.IsRevoked)
+            .ToFeedIterator();
+
+        while (query.HasMoreResults)
+        {
+            var batch = await query.ReadNextAsync();
+            foreach (var doc in batch)
+            {
+                doc.IsRevoked = true;
+                doc.RevokedAt = DateTime.UtcNow;
+                await _refreshTokens.UpsertItemAsync(doc, new PartitionKey(userId));
+            }
+        }
+    }
 
     private async Task<RefreshToken?> FindRefreshTokenByHashAsync(string tokenHash)
     {

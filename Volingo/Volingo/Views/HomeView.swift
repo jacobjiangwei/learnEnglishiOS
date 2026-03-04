@@ -199,11 +199,8 @@ struct HomeView: View {
     }
 
     private var currentLevelLabel: String {
-        if let level = store.userState.confirmedLevel {
-            return level.rawValue
-        }
-        if let selected = store.userState.selectedLevel {
-            return selected.rawValue
+        if let grade = store.userState.gradeEnum {
+            return grade.rawValue
         }
         return "未定级"
     }

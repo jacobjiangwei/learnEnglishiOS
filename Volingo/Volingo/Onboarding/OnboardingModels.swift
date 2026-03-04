@@ -8,9 +8,10 @@
 import Foundation
 import SwiftUI
 
-// MARK: - User Level
+// MARK: - User Level (= Grade)
 
-/// Represents the user's English proficiency level.
+/// Represents the user's grade / proficiency level.
+/// The enum case name doubles as the `grade` API code (e.g. "junior1", "cefrB2").
 /// Display order follows the enum declaration.
 enum UserLevel: String, Codable, CaseIterable, Identifiable {
     // Domestic system
@@ -50,13 +51,17 @@ enum UserLevel: String, Codable, CaseIterable, Identifiable {
 
     /// Stable identifier for API transport (enum case name, e.g. "junior1", "cefrB2")
     var apiKey: String {
-        // Use String(describing:) which returns the case name, not rawValue
         String(describing: self)
     }
 
     /// Find a UserLevel by its API key
     static func from(apiKey: String) -> UserLevel? {
         allCases.first { $0.apiKey == apiKey }
+    }
+
+    /// Whether this grade is a school grade (has textbook + semester).
+    var isSchoolGrade: Bool {
+        gradeNumber != nil
     }
 
     /// Whether this is an elementary school level (grades 1-6)
@@ -66,6 +71,20 @@ enum UserLevel: String, Codable, CaseIterable, Identifiable {
             return true
         default:
             return false
+        }
+    }
+
+    /// Stage prefix used in textbookCode generation: "primary", "junior", "senior"
+    var stage: String? {
+        switch self {
+        case .primary1, .primary2, .primary3, .primary4, .primary5, .primary6:
+            return "primary"
+        case .junior1, .junior2, .junior3:
+            return "junior"
+        case .senior1, .senior2, .senior3:
+            return "senior"
+        default:
+            return nil
         }
     }
 
@@ -262,159 +281,62 @@ enum LevelGroup: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Textbook
+// MARK: - Publisher
 
-enum TextbookOption: String, Codable, CaseIterable, Identifiable {
-    case primaryPEP = "小学·人教版"
-    case primaryFLTRP = "小学·外研版"
-    case primaryYilin = "小学·译林版"
-    case primaryHujiao = "小学·沪教版"
-    case juniorPEP = "初中·人教版"
-    case juniorFLTRP = "初中·外研版"
-    case juniorYilin = "初中·译林版"
-    case juniorHujiao = "初中·沪教版"
-    case seniorPEP = "高中·人教版"
-    case seniorFLTRP = "高中·外研版"
-    case seniorYilin = "高中·译林版"
-    case seniorHujiao = "高中·沪教版"
-    case collegeCet = "大学英语（四级/六级）"
-    case graduateExam = "考研英语"
-    case preschoolPhonics = "启蒙/自然拼读"
-    case cefr = "CEFR 分级"
-    case cambridge = "剑桥 English in Use"
-    case longman = "朗文 Speakout/Cutting Edge"
-    case ielts = "雅思备考"
-    case toefl = "托福备考"
+/// Textbook publisher — only needed for school grades.
+enum Publisher: String, Codable, CaseIterable, Identifiable {
+    case pep    = "pep"
+    case fltrp  = "fltrp"
+    case yilin  = "yilin"
+    case hujiao = "hujiao"
 
     var id: String { rawValue }
 
-    var group: TextbookGroup {
+    /// Chinese display name
+    var displayName: String {
         switch self {
-        case .primaryPEP, .primaryFLTRP, .primaryYilin, .primaryHujiao,
-             .juniorPEP, .juniorFLTRP, .juniorYilin, .juniorHujiao,
-             .seniorPEP, .seniorFLTRP, .seniorYilin, .seniorHujiao,
-             .collegeCet, .graduateExam, .preschoolPhonics:
-            return .gradeSync
-        case .cefr:
-            return .generalLevel
-        case .cambridge, .longman:
-            return .international
-        case .ielts, .toefl:
-            return .examPrep
+        case .pep:    return "人教版"
+        case .fltrp:  return "外研版"
+        case .yilin:  return "译林版"
+        case .hujiao: return "沪教版"
         }
     }
 
+    /// Short English code used in textbookCode generation (e.g. "PEP", "Yilin")
+    var codePrefix: String {
+        switch self {
+        case .pep:    return "PEP"
+        case .fltrp:  return "FLTRP"
+        case .yilin:  return "Yilin"
+        case .hujiao: return "Hujiao"
+        }
+    }
+
+    /// Subtitle shown in the picker
     var subtitle: String {
         switch self {
-        case .primaryPEP:            return "小学主流版本"
-        case .primaryFLTRP:          return "小学主流版本"
-        case .primaryYilin:          return "小学主流版本"
-        case .primaryHujiao:         return "小学主流版本"
-        case .juniorPEP:             return "初中主流版本"
-        case .juniorFLTRP:           return "初中主流版本"
-        case .juniorYilin:           return "初中主流版本"
-        case .juniorHujiao:          return "初中主流版本"
-        case .seniorPEP:             return "高中主流版本"
-        case .seniorFLTRP:           return "高中主流版本"
-        case .seniorYilin:           return "高中主流版本"
-        case .seniorHujiao:          return "高中主流版本"
-        case .collegeCet:        return "大学英语体系"
-        case .graduateExam:      return "考研词汇与阅读"
-        case .preschoolPhonics:  return "启蒙与发音基础"
-        case .cefr:              return "国际通用等级"
-        case .cambridge:         return "语法+词汇体系化"
-        case .longman:           return "口语与场景表达"
-        case .ielts:             return "题型与评分导向"
-        case .toefl:             return "学术英语导向"
+        case .pep:    return "全国使用最广泛"
+        case .fltrp:  return "注重听说能力"
+        case .yilin:  return "江苏地区常用"
+        case .hujiao: return "上海地区常用"
         }
     }
 
-    static func recommended(for level: UserLevel) -> TextbookOption {
-        switch level {
-        case .primary1, .primary2, .primary3, .primary4, .primary5, .primary6:
-            return .primaryPEP
-        case .junior1, .junior2, .junior3:
-            return .juniorPEP
-        case .senior1, .senior2, .senior3:
-            return .seniorPEP
-        case .cet4, .cet6:
-            return .collegeCet
-        case .graduate:
-            return .graduateExam
-        case .daily:
-            return .cefr
-        case .ket, .pet, .fce, .cae, .cpe:
-            return .cambridge
-        case .cefrA1, .cefrA2, .cefrB1, .cefrB2, .cefrC1, .cefrC2:
-            return .cefr
-        case .ielts:
-            return .ielts
-        case .toefl:
-            return .toefl
-        }
-    }
+    /// Icon for the card
+    var icon: String { "books.vertical.fill" }
 
-    static func options(for level: UserLevel) -> [TextbookOption] {
-        switch level {
-        case .primary1, .primary2, .primary3, .primary4, .primary5, .primary6:
-            return [.primaryPEP, .primaryFLTRP, .primaryYilin, .primaryHujiao]
-        case .junior1, .junior2, .junior3:
-            return [.juniorPEP, .juniorFLTRP, .juniorYilin, .juniorHujiao]
-        case .senior1, .senior2, .senior3:
-            return [.seniorPEP, .seniorFLTRP, .seniorYilin, .seniorHujiao]
-        case .cet4, .cet6:
-            return [.collegeCet]
-        case .graduate:
-            return [.graduateExam]
-        case .daily:
-            return [.cefr, .longman]
-        case .ket, .pet, .fce, .cae, .cpe:
-            return [.cambridge, .cefr]
-        case .cefrA1, .cefrA2, .cefrB1, .cefrB2, .cefrC1, .cefrC2:
-            return [.cefr]
-        case .ielts:
-            return [.ielts]
-        case .toefl:
-            return [.toefl]
-        }
-    }
-
-    /// Base identifier used by the query code.
-    var seriesCode: String {
+    /// Card tint color
+    var color: Color {
         switch self {
-        case .primaryPEP:            return "primaryPEP"
-        case .primaryFLTRP:          return "primaryFLTRP"
-        case .primaryYilin:          return "primaryYilin"
-        case .primaryHujiao:         return "primaryHujiao"
-        case .juniorPEP:             return "juniorPEP"
-        case .juniorFLTRP:           return "juniorFLTRP"
-        case .juniorYilin:           return "juniorYilin"
-        case .juniorHujiao:          return "juniorHujiao"
-        case .seniorPEP:             return "seniorPEP"
-        case .seniorFLTRP:           return "seniorFLTRP"
-        case .seniorYilin:           return "seniorYilin"
-        case .seniorHujiao:          return "seniorHujiao"
-        case .collegeCet:            return "collegeCet"
-        case .graduateExam:          return "graduateExam"
-        case .preschoolPhonics:      return "preschoolPhonics"
-        case .cefr:                  return "cefr"
-        case .cambridge:             return "cambridge"
-        case .longman:               return "longman"
-        case .ielts:                 return "ielts"
-        case .toefl:                 return "toefl"
+        case .pep:    return .orange
+        case .fltrp:  return .blue
+        case .yilin:  return .green
+        case .hujiao: return .purple
         }
     }
 
-    /// Full textbook query code, e.g. juniorPEP-7a.
-    func code(for level: UserLevel, term: Semester) -> String? {
-        guard group == .gradeSync else {
-            return seriesCode
-        }
-        guard let grade = level.gradeNumber else {
-            return seriesCode
-        }
-        return "\(seriesCode)-\(grade)\(term.rawValue)"
-    }
+    /// Default recommended publisher
+    static let recommended: Publisher = .pep
 }
 
 enum Semester: String, Codable, CaseIterable, Identifiable {
@@ -438,30 +360,85 @@ enum Semester: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-enum TextbookGroup: String, CaseIterable, Identifiable {
-    case gradeSync = "学段版本"
-    case generalLevel = "通用分级"
-    case international = "国际教材"
-    case examPrep = "考试备考"
+// MARK: - Unit Count Mapping
 
-    var id: String { rawValue }
+/// Returns the number of units for a given grade + publisher + semester combination.
+/// Data based on current mainstream textbook editions.
+func unitCount(for grade: UserLevel, publisher: Publisher, semester: Semester) -> Int {
+    switch (grade, publisher, semester) {
+    // ── 小学 PEP ──
+    case (.primary1, .pep, _):          return 6
+    case (.primary2, .pep, _):          return 6
+    case (.primary3, .pep, _):          return 6
+    case (.primary4, .pep, _):          return 6
+    case (.primary5, .pep, _):          return 6
+    case (.primary6, .pep, _):          return 6
 
-    var icon: String {
-        switch self {
-        case .gradeSync:     return "books.vertical.fill"
-        case .generalLevel:  return "chart.bar.fill"
-        case .international: return "globe.europe.africa.fill"
-        case .examPrep:      return "pencil.and.outline"
-        }
-    }
+    // ── 小学 外研版 ──
+    case (.primary1, .fltrp, _):        return 10
+    case (.primary2, .fltrp, _):        return 10
+    case (.primary3, .fltrp, _):        return 10
+    case (.primary4, .fltrp, _):        return 10
+    case (.primary5, .fltrp, _):        return 10
+    case (.primary6, .fltrp, _):        return 10
 
-    var color: Color {
-        switch self {
-        case .gradeSync:     return .orange
-        case .generalLevel:  return .teal
-        case .international: return .indigo
-        case .examPrep:      return .red
-        }
+    // ── 小学 译林版 ──
+    case (.primary1, .yilin, _):        return 8
+    case (.primary2, .yilin, _):        return 8
+    case (.primary3, .yilin, _):        return 8
+    case (.primary4, .yilin, _):        return 8
+    case (.primary5, .yilin, _):        return 8
+    case (.primary6, .yilin, _):        return 8
+
+    // ── 小学 沪教版 ──
+    case (.primary1, .hujiao, _):       return 12
+    case (.primary2, .hujiao, _):       return 12
+    case (.primary3, .hujiao, _):       return 12
+    case (.primary4, .hujiao, _):       return 12
+    case (.primary5, .hujiao, _):       return 12
+    case (.primary6, .hujiao, _):       return 12
+
+    // ── 初中 PEP ──
+    case (.junior1, .pep, _):           return 10
+    case (.junior2, .pep, _):           return 10
+    case (.junior3, .pep, _):           return 10
+
+    // ── 初中 外研版 ──
+    case (.junior1, .fltrp, _):         return 12
+    case (.junior2, .fltrp, _):         return 12
+    case (.junior3, .fltrp, _):         return 12
+
+    // ── 初中 译林版 ──
+    case (.junior1, .yilin, _):         return 8
+    case (.junior2, .yilin, _):         return 8
+    case (.junior3, .yilin, _):         return 8
+
+    // ── 初中 沪教版 ──
+    case (.junior1, .hujiao, _):        return 12
+    case (.junior2, .hujiao, _):        return 12
+    case (.junior3, .hujiao, _):        return 12
+
+    // ── 高中 PEP ──
+    case (.senior1, .pep, _):           return 5
+    case (.senior2, .pep, _):           return 5
+    case (.senior3, .pep, _):           return 5
+
+    // ── 高中 外研版 ──
+    case (.senior1, .fltrp, _):         return 6
+    case (.senior2, .fltrp, _):         return 6
+    case (.senior3, .fltrp, _):         return 6
+
+    // ── 高中 译林版 ──
+    case (.senior1, .yilin, _):         return 4
+    case (.senior2, .yilin, _):         return 4
+    case (.senior3, .yilin, _):         return 4
+
+    // ── 高中 沪教版 ──
+    case (.senior1, .hujiao, _):        return 6
+    case (.senior2, .hujiao, _):        return 6
+    case (.senior3, .hujiao, _):        return 6
+
+    default:                            return 16
     }
 }
 
@@ -479,21 +456,52 @@ struct LevelTestQuestion: Identifiable {
 
 struct UserState: Codable {
     var isOnboardingCompleted: Bool = false
-    var selectedLevel: UserLevel?
-    var selectedTextbook: TextbookOption?
-    var selectedSemester: Semester?
-    var confirmedLevel: UserLevel?
-    var lastAssessmentScore: Double?
-    var lastAssessmentAt: Date?
+
+    // ── 学习设置 ──
+    var grade: String?           // "junior1" — UserLevel.apiKey
+    var publisher: String?       // "pep" — Publisher.rawValue (school grades only)
+    var semester: String?        // "a" / "b" — Semester.rawValue (school grades only)
+    var currentUnit: Int?        // 1-based (V1: always 1)
+
     var createdAt: Date = Date()
     var preferences: LearningPreferences = LearningPreferences()
 
-    /// Whether the selected level requires a semester choice (小学/初中/高中).
-    /// `gradeNumber` is non-nil only for primary1…senior3 (grades 1-12),
-    /// so this is true exclusively for 小学一年级 ~ 高三.
-    var needsSemester: Bool {
-        guard let level = selectedLevel ?? confirmedLevel else { return false }
-        return level.gradeNumber != nil
+    /// Resolved grade enum
+    var gradeEnum: UserLevel? {
+        guard let grade else { return nil }
+        return UserLevel.from(apiKey: grade)
+    }
+
+    /// Resolved publisher enum
+    var publisherEnum: Publisher? {
+        guard let publisher else { return nil }
+        return Publisher(rawValue: publisher)
+    }
+
+    /// Resolved semester enum
+    var semesterEnum: Semester? {
+        guard let semester else { return nil }
+        return Semester(rawValue: semester)
+    }
+
+    /// Whether the current grade is a school grade (needs publisher + semester).
+    var needsPublisher: Bool {
+        gradeEnum?.isSchoolGrade ?? false
+    }
+
+    /// Computed textbookCode for API queries (e.g. "juniorPEP-7a" or "cet4").
+    var textbookCode: String? {
+        guard let gradeEnum else { return nil }
+
+        // Non-school grade → grade itself is the textbookCode
+        guard gradeEnum.isSchoolGrade else { return grade }
+
+        // School grade → need publisher + semester
+        guard let pub = publisherEnum,
+              let sem = semester,
+              let stage = gradeEnum.stage,
+              let gradeNum = gradeEnum.gradeNumber else { return nil }
+        return "\(stage)\(pub.codePrefix)-\(gradeNum)\(sem)"
     }
 }
 

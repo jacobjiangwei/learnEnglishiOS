@@ -103,22 +103,18 @@ struct ProfileView: View {
                             .foregroundColor(.secondary)
                     }
 
-                    if onboardingStore.userState.needsSemester {
+                    if onboardingStore.userState.needsPublisher {
                         HStack {
                             Text("学期")
                             Spacer()
                             Text(currentSemesterLabel)
                                 .foregroundColor(.secondary)
                         }
-                    }
 
-                    if let score = onboardingStore.userState.lastAssessmentScore {
-                        HStack {
-                            Text("最近测评")
-                            Spacer()
-                            let pct = score * 100
-                            Text("正确率 \(Int(pct))%")
-                                .foregroundColor(accuracyColor(for: pct))
+                        Picker("单元", selection: currentUnitBinding) {
+                            ForEach(1...maxUnitCount, id: \.self) { unit in
+                                Text("第\(unit)单元").tag(unit)
+                            }
                         }
                     }
 
@@ -273,27 +269,53 @@ struct ProfileView: View {
     }
 
     private var currentLevelLabel: String {
-        if let level = onboardingStore.userState.confirmedLevel {
-            return level.rawValue
-        }
-        if let selected = onboardingStore.userState.selectedLevel {
-            return selected.rawValue
+        if let grade = onboardingStore.userState.gradeEnum {
+            return grade.rawValue
         }
         return "未定级"
     }
 
     private var currentTextbookLabel: String {
-        if let textbook = onboardingStore.userState.selectedTextbook {
-            return textbook.rawValue
+        if let pub = onboardingStore.userState.publisherEnum {
+            return pub.displayName
         }
         return "未选择"
     }
 
     private var currentSemesterLabel: String {
-        if let semester = onboardingStore.userState.selectedSemester {
-            return "\(semester.title)学期"
+        if let sem = onboardingStore.userState.semesterEnum {
+            return "\(sem.title)学期"
         }
         return "未选择"
+    }
+
+    private var maxUnitCount: Int {
+        guard let grade = onboardingStore.userState.gradeEnum,
+              let publisher = onboardingStore.userState.publisherEnum else { return 16 }
+        let semester = onboardingStore.userState.semesterEnum ?? .current
+        return unitCount(for: grade, publisher: publisher, semester: semester)
+    }
+
+    private var currentUnitBinding: Binding<Int> {
+        Binding(
+            get: { onboardingStore.userState.currentUnit ?? 1 },
+            set: { newUnit in
+                onboardingStore.updateCurrentUnit(newUnit)
+                syncUnitToServer(newUnit)
+            }
+        )
+    }
+
+    private func syncUnitToServer(_ unit: Int) {
+        guard let grade = onboardingStore.userState.grade else { return }
+        Task {
+            try? await AuthManager.shared.updateProfile(
+                grade: grade,
+                publisher: onboardingStore.userState.publisher,
+                semester: onboardingStore.userState.semester,
+                currentUnit: unit
+            )
+        }
     }
 }
 

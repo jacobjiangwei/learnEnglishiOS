@@ -442,10 +442,10 @@ final class APIService {
         try await fetchNoContent(request: request)
     }
 
-    /// PATCH /api/v1/auth/profile — update user profile (level, textbook, semester)
-    func updateProfile(level: String?, textbookCode: String?, semester: String?) async throws {
-        struct Body: Encodable { let level: String?; let textbookCode: String?; let semester: String? }
-        let body = try JSONEncoder().encode(Body(level: level, textbookCode: textbookCode, semester: semester))
+    /// PATCH /api/v1/auth/profile — update user profile (grade, publisher, semester, currentUnit, onboardingCompleted)
+    func updateProfile(grade: String?, publisher: String?, semester: String?, currentUnit: Int? = nil, onboardingCompleted: Bool? = nil) async throws {
+        struct Body: Encodable { let grade: String?; let publisher: String?; let semester: String?; let currentUnit: Int?; let onboardingCompleted: Bool? }
+        let body = try JSONEncoder().encode(Body(grade: grade, publisher: publisher, semester: semester, currentUnit: currentUnit, onboardingCompleted: onboardingCompleted))
         let request = makeRequest(path: "/api/v1/auth/profile", method: "PATCH", body: body)
         // We don't need the response — fire and forget from the caller's perspective
         let _: AuthUserProfile = try await fetch(AuthUserProfile.self, request: request)

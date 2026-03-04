@@ -33,7 +33,8 @@ public interface IAuthService
     Task BindEmailAsync(string userId, BindEmailRequest request);
 
     /// <summary>
-    /// Verify email code. Creates email Identity, or merges into existing email user.
+    /// Verify email code. Creates email Identity for current user.
+    /// Rejects if email is already bound to another user (no merge).
     /// </summary>
     Task<AuthResponse> VerifyEmailAsync(string userId, VerifyEmailRequest request);
 

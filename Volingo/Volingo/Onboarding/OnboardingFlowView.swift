@@ -13,8 +13,9 @@ import SwiftUI
 /// Steps are assembled dynamically based on user choices.
 enum OnboardingStepType: String, Identifiable, Equatable {
     case welcome
-    case levelSelect
-    case textbookSelect
+    case gradeSelect
+    case publisherSelect
+    case unitSelect
     case levelTest
     case result
 
@@ -22,11 +23,12 @@ enum OnboardingStepType: String, Identifiable, Equatable {
 
     var title: String {
         switch self {
-        case .welcome:        return "开启学习之旅"
-        case .levelSelect:    return "选择学习等级"
-        case .textbookSelect: return "选择教材体系"
-        case .levelTest:      return "智能定级测试"
-        case .result:         return "测试结果"
+        case .welcome:         return "开启学习之旅"
+        case .gradeSelect:     return "选择年级"
+        case .publisherSelect: return "选择教材"
+        case .unitSelect:      return "选择单元"
+        case .levelTest:       return "智能定级测试"
+        case .result:          return "测试结果"
         }
     }
 }
@@ -34,9 +36,10 @@ enum OnboardingStepType: String, Identifiable, Equatable {
 // MARK: - Draft State (collected during onboarding, not yet persisted)
 
 struct OnboardingDraft {
-    var selectedLevel: UserLevel?
+    var selectedGrade: UserLevel?
+    var selectedPublisher: Publisher?
     var selectedSemester: Semester?
-    var selectedTextbook: TextbookOption?
+    var selectedUnit: Int = 1
     var testScore: Double = 0
     var confirmedLevel: UserLevel?
     var attemptId = UUID()
@@ -50,19 +53,20 @@ final class OnboardingCoordinator: ObservableObject {
     @Published var currentIndex: Int = 0
 
     /// Dynamically computed step pipeline.
-    /// Textbook step is included only when multiple options exist.
-    /// Level test is hidden — users pick level + textbook and go straight in.
+    /// Publisher step is included only for school grades.
+    /// Level test is hidden — users pick grade + publisher and go straight in.
     var pipeline: [OnboardingStepType] {
-        var steps: [OnboardingStepType] = [.welcome, .levelSelect]
+        var steps: [OnboardingStepType] = [.welcome, .gradeSelect]
 
-        if let level = draft.selectedLevel {
-            let options = TextbookOption.options(for: level)
-            if options.count > 1 {
-                steps.append(.textbookSelect)
+        if let grade = draft.selectedGrade {
+            if grade.isSchoolGrade {
+                steps.append(.publisherSelect)
+                steps.append(.unitSelect)
             }
         } else {
-            // Before level is chosen, assume textbook is needed
-            steps.append(.textbookSelect)
+            // Before grade is chosen, assume publisher + unit are needed
+            steps.append(.publisherSelect)
+            steps.append(.unitSelect)
         }
 
         // Level test hidden for now — skip straight to learning
@@ -88,13 +92,10 @@ final class OnboardingCoordinator: ObservableObject {
     // MARK: Navigation
 
     func goNext() {
-        // Auto-select textbook if only one option and textbook step is skipped
-        if currentStep == .levelSelect, let level = draft.selectedLevel {
-            let options = TextbookOption.options(for: level)
-            if options.count == 1 {
-                draft.selectedTextbook = options.first
-            } else {
-                draft.selectedTextbook = draft.selectedTextbook ?? TextbookOption.recommended(for: level)
+        // Auto-select default publisher for school grades if publisher step is skipped
+        if currentStep == .gradeSelect, let grade = draft.selectedGrade {
+            if grade.isSchoolGrade && draft.selectedPublisher == nil {
+                draft.selectedPublisher = .pep
             }
         }
 
@@ -133,38 +134,26 @@ final class OnboardingCoordinator: ObservableObject {
     }
 
     func downgradeAndRetest(_ level: UserLevel) {
-        draft.selectedLevel = level
+        draft.selectedGrade = level
         draft.attemptId = UUID()
         draft.testScore = 0
         draft.confirmedLevel = nil
         jumpToTest()
     }
 
-    /// Persist all draft fields to the store.
-    private func syncDraftToStore(_ store: UserStateStore) {
-        if let level = draft.selectedLevel {
-            store.updateSelectedLevel(level)
-        }
-        if let textbook = draft.selectedTextbook {
-            store.updateSelectedTextbook(textbook)
-        }
-        if let semester = draft.selectedSemester {
-            store.updateSelectedSemester(semester)
-        }
-    }
-
-    /// Commit draft → UserStateStore and finish (skip test path).
+    /// Commit draft → UserStateStore and finish (main path — skip test).
     /// Also creates device user if needed and syncs profile to server.
     func skipTest(store: UserStateStore) {
-        guard let level = draft.selectedLevel else { return }
-        syncDraftToStore(store)
-        AnalyticsService.shared.trackOnboardingStep("testSkipped")
+        guard let grade = draft.selectedGrade else { return }
+        AnalyticsService.shared.trackOnboardingStep("completed")
         AnalyticsService.shared.trackOnboardingCompleted()
-        store.completeOnboardingWithoutTest(
-            selectedLevel: level,
-            textbook: draft.selectedTextbook
+        store.completeOnboarding(
+            grade: grade,
+            publisher: draft.selectedPublisher,
+            semester: draft.selectedSemester,
+            currentUnit: draft.selectedUnit
         )
-        
+
         // Lazy user creation + profile sync
         Task {
             await createUserAndSyncProfile(store: store)
@@ -172,14 +161,17 @@ final class OnboardingCoordinator: ObservableObject {
     }
 
     /// Commit draft → UserStateStore and finish (test completed path).
-    /// Also creates device user if needed and syncs profile to server.
     func completeWithTest(store: UserStateStore) {
         guard let confirmed = draft.confirmedLevel else { return }
-        syncDraftToStore(store)
         AnalyticsService.shared.trackOnboardingCompleted()
         AnalyticsService.shared.setUserLevel(confirmed.rawValue)
-        store.completeOnboarding(testScore: draft.testScore, confirmedLevel: confirmed)
-        
+        store.completeOnboarding(
+            grade: confirmed,
+            publisher: draft.selectedPublisher,
+            semester: draft.selectedSemester,
+            currentUnit: draft.selectedUnit
+        )
+
         // Lazy user creation + profile sync
         Task {
             await createUserAndSyncProfile(store: store)
@@ -189,7 +181,7 @@ final class OnboardingCoordinator: ObservableObject {
     /// Create anonymous device user (if not yet authenticated) and sync profile to server.
     private func createUserAndSyncProfile(store: UserStateStore) async {
         let authManager = AuthManager.shared
-        
+
         // Step 1: Create device user if not authenticated
         if !authManager.isAuthenticated {
             do {
@@ -200,45 +192,51 @@ final class OnboardingCoordinator: ObservableObject {
                 return
             }
         }
-        
-        // Step 2: Sync profile (level, textbook, semester) to server
-        if let textbookCode = store.currentTextbookCode {
-            let level = (draft.confirmedLevel ?? draft.selectedLevel)?.apiKey ?? ""
-            let semester = draft.selectedSemester?.rawValue
-            do {
-                try await authManager.updateProfile(level: level, textbookCode: textbookCode, semester: semester)
-                print("[Onboarding] ✅ 用户资料已同步到服务器")
-            } catch {
-                print("[Onboarding] ⚠️ 同步用户资料失败: \(error)")
-            }
+
+        // Step 2: Sync profile (grade, publisher, semester, onboardingCompleted) to server
+        let grade = (draft.confirmedLevel ?? draft.selectedGrade)?.apiKey ?? ""
+        let publisher = draft.selectedPublisher?.rawValue
+        let semester = draft.selectedSemester?.rawValue
+        let unit = draft.selectedUnit
+        do {
+            try await authManager.updateProfile(grade: grade, publisher: publisher, semester: semester, currentUnit: unit, onboardingCompleted: true)
+            print("[Onboarding] ✅ 用户资料已同步到服务器")
+        } catch {
+            print("[Onboarding] ⚠️ 同步用户资料失败: \(error)")
         }
     }
 
-    /// Restore from an entry point (e.g. "modify goal", "retest")
+    /// Restore from an entry point (e.g. "modify goal")
     func restore(from entry: OnboardingEntry, state: UserState) {
         switch entry {
         case .full:
             break
         case .selectLevel:
-            if let idx = pipeline.firstIndex(of: .levelSelect) {
+            if let idx = pipeline.firstIndex(of: .gradeSelect) {
                 currentIndex = idx
             }
         case .selectTextbook:
-            draft.selectedLevel = state.selectedLevel ?? state.confirmedLevel
-            draft.selectedSemester = state.selectedSemester
-            if let idx = pipeline.firstIndex(of: .textbookSelect) {
-                currentIndex = idx
-            } else {
-                // textbook step skipped → go to level select
-                if let idx = pipeline.firstIndex(of: .levelSelect) {
-                    currentIndex = idx
+            // Restore grade from state
+            if let gradeStr = state.grade, let grade = UserLevel.from(apiKey: gradeStr) {
+                draft.selectedGrade = grade
+                if let semStr = state.semester {
+                    draft.selectedSemester = Semester(rawValue: semStr)
                 }
             }
+            if let idx = pipeline.firstIndex(of: .publisherSelect) {
+                currentIndex = idx
+            } else if let idx = pipeline.firstIndex(of: .gradeSelect) {
+                currentIndex = idx
+            }
         case .retest:
-            if let level = state.selectedLevel ?? state.confirmedLevel {
-                draft.selectedLevel = level
-                draft.selectedSemester = state.selectedSemester
-                draft.selectedTextbook = state.selectedTextbook
+            if let gradeStr = state.grade, let grade = UserLevel.from(apiKey: gradeStr) {
+                draft.selectedGrade = grade
+                if let semStr = state.semester {
+                    draft.selectedSemester = Semester(rawValue: semStr)
+                }
+                if let pubStr = state.publisher {
+                    draft.selectedPublisher = Publisher(rawValue: pubStr)
+                }
                 draft.attemptId = UUID()
                 jumpToTest()
             }
@@ -326,14 +324,14 @@ struct OnboardingFlowView: View {
                 showEmailLogin = true
             }
 
-        case .levelSelect:
-            LevelSelectView(coordinator: coordinator) {
-                AnalyticsService.shared.trackOnboardingStep("levelSelect")
-                if let level = coordinator.draft.selectedLevel {
-                    store.updateSelectedLevel(level)
-                    AnalyticsService.shared.trackOnboardingLevelSelected(level.rawValue)
+        case .gradeSelect:
+            GradeSelectView(coordinator: coordinator) {
+                AnalyticsService.shared.trackOnboardingStep("gradeSelect")
+                if let grade = coordinator.draft.selectedGrade {
+                    store.updateGrade(grade)
+                    AnalyticsService.shared.trackOnboardingLevelSelected(grade.rawValue)
                 }
-                // If this is the last step (textbook auto-selected), complete onboarding
+                // For non-school grades, this is the last step → complete
                 if coordinator.isLastStep {
                     coordinator.skipTest(store: store)
                 } else {
@@ -341,19 +339,28 @@ struct OnboardingFlowView: View {
                 }
             }
 
-        case .textbookSelect:
-            TextbookSelectView(coordinator: coordinator) {
-                AnalyticsService.shared.trackOnboardingStep("textbookSelect")
-                if let textbook = coordinator.draft.selectedTextbook {
-                    store.updateSelectedTextbook(textbook)
-                    AnalyticsService.shared.trackOnboardingTextbookSelected(textbook.rawValue)
+        case .publisherSelect:
+            PublisherSelectView(coordinator: coordinator) {
+                AnalyticsService.shared.trackOnboardingStep("publisherSelect")
+                if let pub = coordinator.draft.selectedPublisher {
+                    store.updatePublisher(pub)
                 }
-                // Textbook is always the last step — complete onboarding
+                // Unit select follows publisher select
+                if coordinator.isLastStep {
+                    coordinator.skipTest(store: store)
+                } else {
+                    coordinator.goNext()
+                }
+            }
+
+        case .unitSelect:
+            UnitSelectView(coordinator: coordinator) {
+                AnalyticsService.shared.trackOnboardingStep("unitSelect")
                 coordinator.skipTest(store: store)
             }
 
         case .levelTest:
-            if let level = coordinator.draft.selectedLevel {
+            if let level = coordinator.draft.selectedGrade {
                 LevelTestView(
                     level: level,
                     attemptId: coordinator.draft.attemptId
@@ -369,7 +376,7 @@ struct OnboardingFlowView: View {
             }
 
         case .result:
-            if let selected = coordinator.draft.selectedLevel {
+            if let selected = coordinator.draft.selectedGrade {
                 OnboardingResultView(
                     selectedLevel: selected,
                     score: coordinator.draft.testScore,
@@ -478,9 +485,9 @@ private struct WelcomeFeatureRow: View {
     }
 }
 
-// MARK: - Level Select (+ semester sheet)
+// MARK: - Grade Select (+ semester sheet)
 
-struct LevelSelectView: View {
+struct GradeSelectView: View {
     @ObservedObject var coordinator: OnboardingCoordinator
     let onContinue: () -> Void
 
@@ -489,11 +496,11 @@ struct LevelSelectView: View {
     private var draft: OnboardingDraft { coordinator.draft }
 
     private var needsSemester: Bool {
-        draft.selectedLevel?.gradeNumber != nil
+        draft.selectedGrade?.isSchoolGrade ?? false
     }
 
     private var canContinue: Bool {
-        guard draft.selectedLevel != nil else { return false }
+        guard draft.selectedGrade != nil else { return false }
         if needsSemester && draft.selectedSemester == nil { return false }
         return true
     }
@@ -501,7 +508,7 @@ struct LevelSelectView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("请选择孩子目前的学习目标")
+                Text("请选择孩子目前的年级")
                     .font(.system(size: 18, weight: .semibold))
 
                 ForEach(LevelGroup.allCases) { group in
@@ -513,13 +520,13 @@ struct LevelSelectView: View {
                         ForEach(UserLevel.allCases.filter { $0.group == group }) { level in
                             LevelCard(
                                 level: level,
-                                isSelected: draft.selectedLevel == level,
+                                isSelected: draft.selectedGrade == level,
                                 semesterLabel: semesterLabel(for: level)
                             )
                             .onTapGesture {
                                 withAnimation(.spring()) {
-                                    coordinator.draft.selectedLevel = level
-                                    if level.gradeNumber != nil {
+                                    coordinator.draft.selectedGrade = level
+                                    if level.isSchoolGrade {
                                         // Pre-fill smart default, then show sheet to confirm
                                         if coordinator.draft.selectedSemester == nil {
                                             coordinator.draft.selectedSemester = Semester.current
@@ -527,6 +534,7 @@ struct LevelSelectView: View {
                                         showSemesterSheet = true
                                     } else {
                                         coordinator.draft.selectedSemester = nil
+                                        coordinator.draft.selectedPublisher = nil
                                     }
                                 }
                             }
@@ -556,7 +564,7 @@ struct LevelSelectView: View {
         }
         .sheet(isPresented: $showSemesterSheet) {
             SemesterSheetView(
-                levelName: draft.selectedLevel?.rawValue ?? "",
+                levelName: draft.selectedGrade?.rawValue ?? "",
                 selectedSemester: Binding(
                     get: { coordinator.draft.selectedSemester },
                     set: { coordinator.draft.selectedSemester = $0 }
@@ -569,8 +577,8 @@ struct LevelSelectView: View {
 
     /// Show semester badge on selected grade card
     private func semesterLabel(for level: UserLevel) -> String? {
-        guard draft.selectedLevel == level,
-              level.gradeNumber != nil,
+        guard draft.selectedGrade == level,
+              level.isSchoolGrade,
               let sem = draft.selectedSemester else { return nil }
         return "\(sem.title)学期"
     }
@@ -656,54 +664,126 @@ struct SemesterPill: View {
     }
 }
 
-// MARK: - Textbook Select
+// MARK: - Publisher Select
 
-struct TextbookSelectView: View {
+struct PublisherSelectView: View {
     @ObservedObject var coordinator: OnboardingCoordinator
     let onContinue: () -> Void
 
     private var draft: OnboardingDraft { coordinator.draft }
 
-    private var availableOptions: [TextbookOption] {
-        guard let level = draft.selectedLevel else { return [] }
-        return TextbookOption.options(for: level)
-    }
-
-    private var recommendedTextbook: TextbookOption? {
-        draft.selectedLevel.map { TextbookOption.recommended(for: $0) }
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("请选择教材体系")
+                Text("请选择教材版本")
                     .font(.system(size: 18, weight: .semibold))
 
-                ForEach(TextbookGroup.allCases) { group in
-                    let groupOptions = availableOptions.filter { $0.group == group }
-                    if !groupOptions.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(group.rawValue)
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.secondary)
-
-                            ForEach(groupOptions) { option in
-                                TextbookCard(
-                                    option: option,
-                                    isSelected: draft.selectedTextbook == option,
-                                    isRecommended: recommendedTextbook == option
-                                )
-                                .onTapGesture {
-                                    withAnimation(.spring()) {
-                                        coordinator.draft.selectedTextbook = option
-                                    }
-                                }
-                            }
+                ForEach(Publisher.allCases) { pub in
+                    PublisherCard(
+                        publisher: pub,
+                        isSelected: draft.selectedPublisher == pub,
+                        isRecommended: pub == .pep
+                    )
+                    .onTapGesture {
+                        withAnimation(.spring()) {
+                            coordinator.draft.selectedPublisher = pub
                         }
                     }
                 }
             }
             .padding(.bottom, 100)
+        }
+        .onAppear {
+            // Pre-select recommended publisher if none chosen
+            if coordinator.draft.selectedPublisher == nil {
+                coordinator.draft.selectedPublisher = .pep
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 10) {
+                Button(action: onContinue) {
+                    Text("下一步")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(draft.selectedPublisher == nil ? Color.gray.opacity(0.4) : Color.blue)
+                        .cornerRadius(14)
+                }
+                .disabled(draft.selectedPublisher == nil)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+            .background(.thinMaterial)
+        }
+    }
+}
+
+// MARK: - Unit Select View
+
+struct UnitSelectView: View {
+    @ObservedObject var coordinator: OnboardingCoordinator
+    let onContinue: () -> Void
+
+    private var maxUnit: Int {
+        guard let grade = coordinator.draft.selectedGrade,
+              let publisher = coordinator.draft.selectedPublisher else { return 16 }
+        let semester = coordinator.draft.selectedSemester ?? .current
+        return unitCount(for: grade, publisher: publisher, semester: semester)
+    }
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 64, maximum: 80), spacing: 12)
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("你学到第几单元了？")
+                    .font(.system(size: 18, weight: .semibold))
+
+                Text("选择你当前正在学习的单元")
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+
+                LazyVGrid(columns: columns, spacing: 12) {
+                    ForEach(1...maxUnit, id: \.self) { unit in
+                        let isSelected = coordinator.draft.selectedUnit == unit
+                        Button {
+                            withAnimation(.spring()) {
+                                coordinator.draft.selectedUnit = unit
+                            }
+                        } label: {
+                            VStack(spacing: 4) {
+                                Text("\(unit)")
+                                    .font(.system(size: 22, weight: .bold))
+                                Text("单元")
+                                    .font(.system(size: 12))
+                            }
+                            .foregroundColor(isSelected ? .white : .primary)
+                            .frame(width: 64, height: 64)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(isSelected ? Color.blue : Color.white)
+                                    .shadow(color: .black.opacity(0.05), radius: 6, x: 0, y: 3)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(isSelected ? Color.blue : Color.gray.opacity(0.2), lineWidth: 1.5)
+                            )
+                        }
+                    }
+                }
+                .padding(.top, 8)
+            }
+            .padding(.bottom, 100)
+        }
+        .onAppear {
+            // Default to unit 1
+            if coordinator.draft.selectedUnit < 1 || coordinator.draft.selectedUnit > maxUnit {
+                coordinator.draft.selectedUnit = 1
+            }
         }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 10) {
@@ -713,10 +793,9 @@ struct TextbookSelectView: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
-                        .background(draft.selectedTextbook == nil ? Color.gray.opacity(0.4) : Color.blue)
+                        .background(Color.blue)
                         .cornerRadius(14)
                 }
-                .disabled(draft.selectedTextbook == nil)
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -728,26 +807,26 @@ struct TextbookSelectView: View {
 
 // MARK: - Reusable Cards
 
-struct TextbookCard: View {
-    let option: TextbookOption
+struct PublisherCard: View {
+    let publisher: Publisher
     let isSelected: Bool
     let isRecommended: Bool
 
     var body: some View {
         HStack(spacing: 14) {
             Circle()
-                .fill(option.group.color.opacity(0.15))
+                .fill(publisher.color.opacity(0.15))
                 .frame(width: 46, height: 46)
                 .overlay(
-                    Image(systemName: option.group.icon)
-                        .foregroundColor(option.group.color)
+                    Image(systemName: publisher.icon)
+                        .foregroundColor(publisher.color)
                         .font(.system(size: 22, weight: .bold))
                 )
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(option.rawValue)
+                Text(publisher.displayName)
                     .font(.system(size: 17, weight: .bold))
-                Text(option.subtitle)
+                Text(publisher.subtitle)
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)
             }
@@ -761,7 +840,7 @@ struct TextbookCard: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(option.group.color)
+                        .background(publisher.color)
                         .clipShape(Capsule())
                 }
                 if isSelected {
@@ -773,12 +852,12 @@ struct TextbookCard: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(isSelected ? option.group.color.opacity(0.12) : Color.white)
+                .fill(isSelected ? publisher.color.opacity(0.12) : Color.white)
                 .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 4)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .stroke(isSelected ? option.group.color : Color.clear, lineWidth: 1.5)
+                .stroke(isSelected ? publisher.color : Color.clear, lineWidth: 1.5)
         )
     }
 }

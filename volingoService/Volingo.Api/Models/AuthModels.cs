@@ -24,6 +24,7 @@ public static class AuthErrorCodes
     public const string InvalidCode = "invalid_code";
     public const string InvalidLoginCode = "invalid_login_code";
     public const string NotEmailUser = "not_email_user";
+    public const string EmailAlreadyExists = "email_already_exists";
 }
 
 // ── Request / Response DTOs ──
@@ -53,15 +54,19 @@ public record UserProfile(
     string? DisplayName,
     string? Email,
     bool HasEmailIdentity,
-    string? Level = null,
-    string? TextbookCode = null,
-    string? Semester = null);
+    bool OnboardingCompleted = false,
+    string? Grade = null,
+    string? Publisher = null,
+    string? Semester = null,
+    int? CurrentUnit = null);
 
 public record UpdateProfileRequest(
-    string? Level = null,
-    string? TextbookCode = null,
+    string? Grade = null,
+    string? Publisher = null,
     string? Semester = null,
-    string? DisplayName = null);
+    int? CurrentUnit = null,
+    string? DisplayName = null,
+    bool? OnboardingCompleted = null);
 
 // ── Domain entities (stored in Cosmos DB) ──
 
@@ -87,9 +92,12 @@ public class HBUserProfile
     public string? DisplayName { get; set; }
     public string? Email { get; set; }
     public bool HasEmailIdentity { get; set; }
-    public string? Level { get; set; }
-    public string? TextbookCode { get; set; }
+    public bool OnboardingCompleted { get; set; }
+    public string? Grade { get; set; }
+    public string? Publisher { get; set; }
     public string? Semester { get; set; }
+    public int? CurrentUnit { get; set; }
+    public DateTime? UpdatedAt { get; set; }
 }
 
 // ── Identity entities ──
@@ -102,6 +110,7 @@ public class HBUserIdentity
 {
     public string Id { get; set; } = "";
     public string UserId { get; set; } = "";
+    public string Type { get; set; } = "";  // "anonymous" | "email"
     public DateTime CreatedAt { get; set; }
     public DateTime LastUsedAt { get; set; }
 }
@@ -117,6 +126,7 @@ public class DeviceIdentity : HBUserIdentity
 public class EmailIdentity : HBUserIdentity
 {
     public string Email { get; set; } = "";
+    public bool Verified { get; set; }
 }
 
 /// <summary>

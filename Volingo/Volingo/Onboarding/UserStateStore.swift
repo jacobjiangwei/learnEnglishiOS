@@ -17,32 +17,51 @@ final class UserStateStore: ObservableObject {
         load()
     }
 
-    func updateSelectedLevel(_ level: UserLevel) {
-        userState.selectedLevel = level
+    // MARK: - New field setters
+
+    func updateGrade(_ grade: UserLevel) {
+        userState.grade = grade.apiKey
+        // Clear publisher/semester if non-school grade
+        if !grade.isSchoolGrade {
+            userState.publisher = nil
+            userState.semester = nil
+        }
         save()
     }
 
-    func updateSelectedTextbook(_ textbook: TextbookOption) {
-        userState.selectedTextbook = textbook
+    func updatePublisher(_ publisher: Publisher) {
+        userState.publisher = publisher.rawValue
         save()
     }
 
-    func completeOnboarding(testScore: Double, confirmedLevel: UserLevel) {
+    func updateSemester(_ semester: Semester) {
+        userState.semester = semester.rawValue
+        save()
+    }
+
+    func updateCurrentUnit(_ unit: Int) {
+        userState.currentUnit = unit
+        save()
+    }
+
+    // MARK: - Onboarding lifecycle
+
+    func completeOnboarding(grade: UserLevel, publisher: Publisher?, semester: Semester?, currentUnit: Int = 1) {
         userState.isOnboardingCompleted = true
-        userState.lastAssessmentScore = testScore
-        userState.confirmedLevel = confirmedLevel
-        userState.lastAssessmentAt = Date()
+        userState.grade = grade.apiKey
+        userState.publisher = publisher?.rawValue
+        userState.semester = semester?.rawValue
+        userState.currentUnit = currentUnit
+        onboardingEntry = .full
         save()
     }
 
     func resetOnboarding() {
         userState.isOnboardingCompleted = false
-        userState.selectedLevel = nil
-        userState.selectedTextbook = nil
-        userState.selectedSemester = nil
-        userState.confirmedLevel = nil
-        userState.lastAssessmentScore = nil
-        userState.lastAssessmentAt = nil
+        userState.grade = nil
+        userState.publisher = nil
+        userState.semester = nil
+        userState.currentUnit = nil
         onboardingEntry = .full
         save()
     }
@@ -50,38 +69,10 @@ final class UserStateStore: ObservableObject {
     func startModifyGoal() {
         onboardingEntry = .selectLevel
         userState.isOnboardingCompleted = false
-        userState.selectedLevel = nil
-        userState.selectedTextbook = nil
-        userState.selectedSemester = nil
-        userState.confirmedLevel = nil
-        userState.lastAssessmentScore = nil
-        userState.lastAssessmentAt = nil
-        save()
-    }
-
-    func startRetest(keepTextbook: Bool = true) {
-        onboardingEntry = .retest
-        userState.isOnboardingCompleted = false
-        if let confirmed = userState.confirmedLevel {
-            userState.selectedLevel = confirmed
-        }
-        if !keepTextbook {
-            userState.selectedTextbook = nil
-        }
-        userState.confirmedLevel = nil
-        userState.lastAssessmentScore = nil
-        userState.lastAssessmentAt = nil
-        save()
-    }
-
-    func completeOnboardingWithoutTest(selectedLevel: UserLevel, textbook: TextbookOption?) {
-        userState.isOnboardingCompleted = true
-        userState.selectedLevel = selectedLevel
-        userState.confirmedLevel = selectedLevel
-        userState.selectedTextbook = textbook
-        userState.lastAssessmentScore = nil
-        userState.lastAssessmentAt = nil
-        onboardingEntry = .full
+        userState.grade = nil
+        userState.publisher = nil
+        userState.semester = nil
+        userState.currentUnit = nil
         save()
     }
 
@@ -89,6 +80,35 @@ final class UserStateStore: ObservableObject {
         userState.preferences = preferences
         save()
     }
+
+    // MARK: - Cloud sync
+
+    /// Restore state from cloud profile after login.
+    /// Returns `true` if onboarding was fully restored (user can skip onboarding).
+    @discardableResult
+    func restoreFromCloudProfile(_ profile: AuthUserProfile) -> Bool {
+        // Cloud must have onboardingCompleted + grade to restore
+        guard profile.onboardingCompleted,
+              let grade = profile.grade,
+              UserLevel.from(apiKey: grade) != nil else {
+            return false
+        }
+
+        userState.grade = grade
+        userState.publisher = profile.publisher
+        userState.semester = profile.semester
+        userState.currentUnit = profile.currentUnit
+        userState.isOnboardingCompleted = true
+        save()
+        return true
+    }
+
+    /// 当前教材编码，用于 API 请求（如 "juniorPEP-7a"）
+    var currentTextbookCode: String? {
+        userState.textbookCode
+    }
+
+    // MARK: - Private
 
     private func load() {
         if let loaded: UserState = try? StorageService.shared.loadFromFile(UserState.self, filename: storageFile) {
@@ -98,48 +118,5 @@ final class UserStateStore: ObservableObject {
 
     private func save() {
         try? StorageService.shared.saveToFile(userState, filename: storageFile)
-    }
-
-    func updateSelectedSemester(_ semester: Semester) {
-        userState.selectedSemester = semester
-        save()
-    }
-
-    /// Restore state from cloud profile after login.
-    /// Returns `true` if onboarding was fully restored (user can skip onboarding).
-    @discardableResult
-    func restoreFromCloudProfile(_ profile: AuthUserProfile) -> Bool {
-        // Need at least level to consider the profile "complete"
-        guard let levelStr = profile.level,
-              let level = UserLevel.allCases.first(where: { $0.apiKey == levelStr }) else {
-            return false
-        }
-
-        userState.selectedLevel = level
-        userState.confirmedLevel = level
-
-        // Restore textbook if available
-        if let tbCode = profile.textbookCode {
-            userState.selectedTextbook = TextbookOption.allCases.first(where: { $0.seriesCode == tbCode })
-        }
-
-        // Restore semester if available
-        if let semStr = profile.semester {
-            userState.selectedSemester = Semester(rawValue: semStr)
-        }
-
-        userState.isOnboardingCompleted = true
-        save()
-        return true
-    }
-
-    /// 当前教材编码，用于 API 请求（如 "juniorPEP-7a"）
-    var currentTextbookCode: String? {
-        guard let textbook = userState.selectedTextbook,
-              let level = userState.confirmedLevel ?? userState.selectedLevel else {
-            return userState.selectedTextbook?.seriesCode
-        }
-        let term = userState.selectedSemester ?? .first
-        return textbook.code(for: level, term: term)
     }
 }
